@@ -1,105 +1,114 @@
 module MatMul #(
-    // Number of elements in the vector (e.g. 256)
-    parameter int VECTOR_WIDTH = 256,
-    // Width (bits) of each J element (e.g. 8)
-    parameter int N            = 8,
-    // Accumulator width: enough bits to hold VECTOR_WIDTH elements of N bits summed together.
-    parameter int ACC_WIDTH    = N + $clog2(VECTOR_WIDTH) + $clog2(VECTOR_WIDTH)
-)(
-    input  logic                           clk,
-    input  logic                           rst_n,
-    input  logic        [N-1:0]            J_Column [0:VECTOR_WIDTH-1], // Column of J matrix (256 elements of 8 bits each)
-    input  logic                           start,
-    input  logic                           sigma_vector [0:VECTOR_WIDTH-1], // Vector of signs
+    // Memory interface parameters
+    parameter int MEM_BANDWIDTH   = 4096,        // Memory bandwidth in bits per clock cycle
+    // Matrix/Vector dimensions
+    parameter int VECTOR_SIZE     = 256,         // Number of elements in sigma vector (configurable)
+    parameter int J_ELEMENT_WIDTH = 4,           // Bit width of each J matrix element
+    // Derived parameter: how many J columns fit in one memory read
+    // Each J column uses VECTOR_SIZE * J_ELEMENT_WIDTH bits
+    parameter int J_COLS_PER_READ = MEM_BANDWIDTH / (VECTOR_SIZE * J_ELEMENT_WIDTH),
+    // Number of J columns processed per clock cycle
+    parameter int J_COLS_PER_CLK = J_COLS_PER_READ,
+    parameter int NUM_J_CHUNKS = VECTOR_SIZE / J_COLS_PER_READ,
+    // Intermediate vector bit width calculation
+    parameter int INT_RESULT_WIDTH    = $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH,
+    // Energy bit width calculation
+    parameter int ENERGY_WIDTH    = $clog2(VECTOR_SIZE) + $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH
+) (
+    // Clock and reset
+    input  logic                                      clk,
+    input  logic                                      rst_n,
+    // Control
+    input  logic                                      start,        
+    // Sigma vector — single-cycle supply (one bit per element)
+    input  logic [VECTOR_SIZE-1:0]                    sigma,      // packed sigma bits (element 0 = LSB)
+    // J matrix input: VECTOR_SIZE rows × J_COLS_PER_READ columns, each element is J_ELEMENT_WIDTH bits
+    // Unpacked (big-endian) ordering for rows/columns: [0:VECTOR_SIZE-1][0:J_COLS_PER_READ-1]
+    input  logic [J_ELEMENT_WIDTH-1:0]                J_Matrix_chunk [0:VECTOR_SIZE-1][0:J_COLS_PER_READ-1],
+    input  logic [ENERGY_WIDTH-1:0]                   Energy_previous
+);
+  // Local function for adder/subtractor
+  function signed [INT_RESULT_WIDTH-1:0] adder_subtractor (
+      input logic         sigma_bit,
+      input logic [J_ELEMENT_WIDTH-1:0] j_element
+  );
+      adder_subtractor = sigma_bit ? j_element : -j_element;
+  endfunction : adder_subtractor
+  
+  // Accumulator for final result
+  logic signed [ENERGY_WIDTH-1:0] Energy_next; // 1 bit wider???
+  // Counter for iterating over J matrix chunks
+  logic [$clog2(NUM_J_CHUNKS)-1:0] j_chunk_counter;
+  // Sampled start signal
+  logic start_enable;
+  logic energy_exceeded;
+  assign energy_exceeded = (Energy_next >= Energy_previous);
 
-    input  logic        [ACC_WIDTH:0]      E_p, // Positive energy
-    output logic signed [ACC_WIDTH:0]      dot_result, // 25 bits to avoid overflow when summing 256 8-bit numbers and deal with sign
-    output logic                           done,
-    output logic                           flag  // Flag to indicate if dot_product > E_p  
-);  
-
-
-    logic [$clog2(VECTOR_WIDTH)-1:0] idx,cdx;
-
-    typedef enum logic [1:0] {
-        IDLE,
-        COMPUTE,
-        DONE
-    } state_t;
-    state_t state, next_state;
-
-
-
-
-assign flag = (dot_result > E_p);
-
-    always_comb begin
-        next_state = state;
-        case (state)
-            IDLE: begin
-                if (start) begin
-                    next_state = COMPUTE;
-                end
-            end
-            COMPUTE: begin
-                if ((idx == VECTOR_WIDTH-1 && cdx == VECTOR_WIDTH-1) || flag == 1'd1) begin
-                    next_state = DONE;
-                end
-            end
-            DONE: begin
-                next_state = IDLE;
-            end
-        endcase
-    end
-
-
-
-
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (state == COMPUTE) begin
-            if (idx !=VECTOR_WIDTH - 1) begin
-                dot_result <= sigma_vector[idx] ? dot_result + J_Column[idx]: dot_result - J_Column[idx];
-                idx <= idx + 8'd1;
-            end else if (cdx != VECTOR_WIDTH-1) begin
-                cdx <= cdx + 8'd1;
-                idx <= 0;
-            end else begin
-                cdx <= 0;
-                idx <= 0;
-            end 
-
-            
-        end else if (state == DONE) begin
-            done <= 1'b1;
-        end else if (state == IDLE) begin
-            done <= 1'b0;
-            flag <= 1'b0;
-            dot_result <= '0;
-            idx <= 0;
-            cdx <= 0;
+  // Generate the multiply-accumulate logic
+  genvar i;
+  generate
+    logic signed [ENERGY_WIDTH-1:0] temp_Energy_next;// It is signed so should be 1 bit wider???
+    for (i = 0; i < J_COLS_PER_CLK; i = i + 1) begin : generate_energy
+      logic signed [INT_RESULT_WIDTH-1:0] temp_sum; // Temporary sum for accumulation,
+                                                    // It is signed so should be 1 bit wider???
+      always_comb begin
+        temp_sum = 0;
+        genvar k;
+        for (k = 0; k < VECTOR_SIZE; k = k + 1) begin : accumulate
+          temp_sum = temp_sum + adder_subtractor(sigma[k], J_Matrix_chunk[k][i]);
         end
-
-
-
-
-     end
-
-
-
-
+        temp_Energy_next = temp_Energy_next + temp_sum;
+      end
+    end
+    
+   
+  endgenerate
+  // Sample the start signal
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      start_enable <= 0;
+    end else begin
+      if (start) begin
+        start_enable <= 1;
+      end else if (j_chunk_counter == (NUM_J_CHUNKS - 1) || energy_exceeded) begin
+        start_enable <= 0;
+      end
+    end
+  end
+  // Add register to store previous value of start_enable
+    logic start_enable_prev;
+    
+    // Sample start_enable to detect negative edge
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            // Reset all state elements and outputs
-            state      <= IDLE;
-            idx        <= '0;
-            cdx        <= '0;
-            dot_result <= '0;
-            done      <= 1'b0;
+            start_enable_prev <= 0;
         end else begin
-            state <= next_state;
+            start_enable_prev <= start_enable;
         end
-    end 
     end
-endmodule
 
-// End of MatMul.sv
+  // Instantiate the counter module
+  counter #(
+    .WIDTH($clog2(NUM_J_CHUNKS)),
+    .MAX_VALUE(NUM_J_CHUNKS - 1)
+  ) counter_inst (
+    .clk(clk),
+    .rst_n(rst_n),
+    .en(start_enable), // Enable the counter when start is asserted
+    .count(j_chunk_counter),
+    .wrap() // Not used
+  );
+
+  // Accumulate temp_Energy_next into Energy_next
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            Energy_next <= 0;
+        end else if (start_enable_prev && !start_enable) begin
+            Energy_next <= 0;
+        end else if (start_enable) begin
+            Energy_next <= Energy_next + temp_Energy_next;
+        end
+    end
+  
+
+endmodule
