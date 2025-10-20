@@ -4,6 +4,8 @@
 
 # Author: Giuseppe Sarda <giuseppe.sarda@esat.kuleuven.be>
 # Basic build script for QuestaSim
+# Note: Tested only with questasim_2025.2
+# For ESAT please source /esat/micas-data/data/design/scripts/questasim_2025.2.rc 
 
 if { [info exists ::env(FORCE_BUILD)] } {
     set FORCE_BUILD $::env(FORCE_BUILD)
