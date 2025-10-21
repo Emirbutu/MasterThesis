@@ -1,3 +1,4 @@
+//License: KU Leuven
 module MatMul #(
     // Memory interface parameters
     parameter int MEM_BANDWIDTH   = 4096,        // Memory bandwidth in bits per clock cycle
