@@ -97,10 +97,10 @@ if [ -n "${HDL_FILE_LIST}" ]; then
     ARGS="HDL_FILES_LIST=${HDL_FILE_LIST}"
 fi
 
-if [ "${GUI}" -eq 1 ]; then
-    ARGS="${ARGS} NO_GUI=0"
-else
+if [ "${NO_GUI}" -eq 1 ]; then
     ARGS="${ARGS} NO_GUI=1"
+else
+    ARGS="${ARGS} NO_GUI=0"
 fi
 
 if [ "${DBG}" -gt 0 ]; then

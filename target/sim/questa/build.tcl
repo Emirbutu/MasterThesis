@@ -4,6 +4,8 @@
 
 # Author: Giuseppe Sarda <giuseppe.sarda@esat.kuleuven.be>
 # Basic build script for QuestaSim
+# --- Added manually to ensure files exist ---
+
 
 if { [info exists ::env(BUILD_ONLY)] } {
     set BUILD_ONLY $::env(BUILD_ONLY)
@@ -20,10 +22,12 @@ vmap work ${WLIB}
 #vmap work_lib ${WLIB}
 
 source ${HDL_FILE_LIST}
+puts "DEBUG: HDL_FILES = <$HDL_FILES>"
 
 puts "Building ${SIM_NAME} ..."
 foreach file $HDL_FILES {
     puts "Compiling ${file} ..."
+    puts "DEBUG: HDL_FILES = <$HDL_FILES>"
     vlog -sv -work ${WLIB} {*}${DEFINES} ${file}
 }
 
