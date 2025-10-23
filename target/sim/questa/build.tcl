@@ -22,12 +22,11 @@ vmap work ${WLIB}
 #vmap work_lib ${WLIB}
 
 source ${HDL_FILE_LIST}
-puts "DEBUG: HDL_FILES = <$HDL_FILES>"
 
 puts "Building ${SIM_NAME} ..."
+puts "$HDL_FILES"
 foreach file $HDL_FILES {
     puts "Compiling ${file} ..."
-    puts "DEBUG: HDL_FILES = <$HDL_FILES>"
     vlog -sv -work ${WLIB} {*}${DEFINES} ${file}
 }
 
