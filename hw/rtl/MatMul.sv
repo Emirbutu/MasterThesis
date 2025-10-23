@@ -42,28 +42,24 @@ module MatMul #(
   logic [$clog2(NUM_J_CHUNKS)-1:0] j_chunk_counter;
   // Sampled start signal
   logic start_enable;
+  logic start_enable_prev;
   logic energy_exceeded;
   assign energy_exceeded = (Energy_next >= Energy_previous);
 
   // Generate the multiply-accumulate logic
-  genvar i;
-  generate
-    logic signed [ENERGY_WIDTH-1:0] temp_Energy_next;// It is signed so should be 1 bit wider???
-    for (i = 0; i < J_COLS_PER_CLK; i = i + 1) begin : generate_energy
-      logic signed [INT_RESULT_WIDTH-1:0] temp_sum; // Temporary sum for accumulation,
-                                                    // It is signed so should be 1 bit wider???
-      always_comb begin
-        temp_sum = 0;
-        genvar k;
-        for (k = 0; k < VECTOR_SIZE; k = k + 1) begin : accumulate
-          temp_sum = temp_sum + adder_subtractor(sigma[k], J_Matrix_chunk[k][i]);
-        end
-        temp_Energy_next = temp_Energy_next + temp_sum;
-      end
+logic signed [ENERGY_WIDTH-1:0] temp_Energy_next;
+always_comb begin
+  temp_Energy_next = '0;
+  for (int i = 0; i < J_COLS_PER_CLK; i++) begin
+    automatic logic signed [INT_RESULT_WIDTH-1:0] temp_sum = '0;
+    for (int k = 0; k < VECTOR_SIZE; k++) begin
+      temp_sum += adder_subtractor(sigma[k], J_Matrix_chunk[k][i]);
     end
-    
-   
-  endgenerate
+    temp_Energy_next += temp_sum;
+  end
+end
+
+
   // Sample the start signal
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -76,8 +72,7 @@ module MatMul #(
       end
     end
   end
-  // Add register to store previous value of start_enable
-    logic start_enable_prev;
+ 
     
     // Sample start_enable to detect negative edge
     always_ff @(posedge clk or negedge rst_n) begin
@@ -91,7 +86,7 @@ module MatMul #(
   // Instantiate the counter module
   counter #(
     .WIDTH($clog2(NUM_J_CHUNKS)),
-    .MAX_VALUE(NUM_J_CHUNKS - 1)
+    .MAX_VALUE(NUM_J_CHUNKS )
   ) counter_inst (
     .clk(clk),
     .rst_n(rst_n),
