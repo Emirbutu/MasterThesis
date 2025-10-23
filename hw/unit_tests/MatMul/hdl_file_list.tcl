@@ -6,6 +6,6 @@ set HDL_PATH ../../rtl
 
 set HDL_FILES [ list \
     "./tb_MatMul.sv" \
-    "${HDL_PATH}/lib/MatMul.sv" \  
+    "${HDL_PATH}/MatMul.sv" \  
 ]
 #lib ??
