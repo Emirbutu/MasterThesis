@@ -23,6 +23,7 @@ vmap work ${WLIB}
 
 source ${HDL_FILE_LIST}
 
+# TODO break script if compilation is not succesfull
 puts "Building ${SIM_NAME} ..."
 puts "$HDL_FILES"
 foreach file $HDL_FILES {
