@@ -12,9 +12,9 @@ module MatMul #(
     parameter int J_COLS_PER_CLK = J_COLS_PER_READ,
     parameter int NUM_J_CHUNKS = VECTOR_SIZE / J_COLS_PER_READ,
     // Intermediate vector bit width calculation
-    parameter int INT_RESULT_WIDTH    = $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH,
+    parameter int INT_RESULT_WIDTH    = $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH + 1, // +1 for sign ???  I hope it's ok
     // Energy bit width calculation
-    parameter int ENERGY_WIDTH    = $clog2(VECTOR_SIZE) + $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH
+    parameter int ENERGY_WIDTH    = $clog2(VECTOR_SIZE) + $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH +1  // +1 for sign
 ) (
     // Clock and reset
     input  logic                                      clk,
@@ -28,16 +28,8 @@ module MatMul #(
     input  logic [J_ELEMENT_WIDTH-1:0]                J_Matrix_chunk [0:VECTOR_SIZE-1][0:J_COLS_PER_READ-1],
     input  logic [ENERGY_WIDTH-1:0]                   Energy_previous
 );
-  // Local function for adder/subtractor
-  function signed [INT_RESULT_WIDTH-1:0] adder_subtractor (
-      input logic         sigma_bit,
-      input logic [J_ELEMENT_WIDTH-1:0] j_element
-  );
-      adder_subtractor = sigma_bit ? j_element : -j_element;
-  endfunction : adder_subtractor
-  
   // Accumulator for final result
-  logic signed [ENERGY_WIDTH-1:0] Energy_next; // 1 bit wider???
+  logic signed [ENERGY_WIDTH-1:0] Energy_next; // sign bit extended
   // Counter for iterating over J matrix chunks
   logic [$clog2(NUM_J_CHUNKS)-1:0] j_chunk_counter;
   // Sampled start signal
@@ -47,18 +39,53 @@ module MatMul #(
   assign energy_exceeded = (Energy_next >= Energy_previous);
 
   // Generate the multiply-accumulate logic
-logic signed [ENERGY_WIDTH-1:0] temp_Energy_next;
-always_comb begin
-  temp_Energy_next = '0;
-  for (int i = 0; i < J_COLS_PER_CLK; i++) begin
-    automatic logic signed [INT_RESULT_WIDTH-1:0] temp_sum = '0;
-    for (int k = 0; k < VECTOR_SIZE; k++) begin
-      temp_sum += adder_subtractor(sigma[k], J_Matrix_chunk[k][i]);
-    end
-    temp_Energy_next += temp_sum;
-  end
-end
+ // Width to safely accumulate J_COLS_PER_CLK signed dot-products
+  localparam int ACC_WIDTH = INT_RESULT_WIDTH + $clog2(J_COLS_PER_CLK) + 1; // +1 for sign
 
+  // Chain across columns for σ^T accumulation
+  logic signed [ACC_WIDTH-1:0] stage2_sum [0:J_COLS_PER_CLK];
+  assign stage2_sum[0] = '0;
+  logic signed [ACC_WIDTH-1:0] block_sum; // final sum for a J chunk
+
+  genvar c, r;
+  generate
+    for (c = 0; c < J_COLS_PER_CLK; c++) begin : MULTIPLE_COLUMNS_AT_ONCE
+
+      // Map column c of J_Matrix_chunk into a 1D array for the DotProductChain ( I also wonder if I can connect the whole column directly without this mapping)
+      logic [J_ELEMENT_WIDTH-1:0] this_col [0:VECTOR_SIZE-1];
+      for (r = 0; r < VECTOR_SIZE; r++) begin : MAP_COL
+        assign this_col[r] = J_Matrix_chunk[r][c]; // UNSIGNED elements
+      end
+
+      // Per-column dot product (Σ with J_col[c]); UNSIGNED J w/ zero-extend handled inside
+      wire signed [INT_RESULT_WIDTH-1:0] dot_c;
+      DotProductChain #(
+        .VECTOR_SIZE      (VECTOR_SIZE),
+        .J_ELEMENT_WIDTH  (J_ELEMENT_WIDTH),
+        .INT_RESULT_WIDTH (INT_RESULT_WIDTH)
+      ) dpc_i (
+        .sigma   (sigma),
+        .J_col   (this_col),
+        .dot_out (dot_c)
+      );
+
+      // Sign-extend dot_c up to the σ^T accumulator width
+      wire signed [ACC_WIDTH-1:0] dot_ext =
+        {{(ACC_WIDTH-INT_RESULT_WIDTH){dot_c[INT_RESULT_WIDTH-1]}}, dot_c}; // I copied the sign bit and filled the upper bits with it to do the sign-extension
+
+      // σ^T accumulation: 0=subtract, 1=add
+      adder_subtractor_unit #(
+        .WIDTH(ACC_WIDTH)   
+      ) addsub_sigmaT_i (
+        .a   (stage2_sum[c]),
+        .b   (dot_ext),
+        .sub (sigma[c]),
+        .y   (stage2_sum[c+1])
+      );
+    end
+  endgenerate
+
+  assign block_sum = stage2_sum[J_COLS_PER_CLK];
 
   // Sample the start signal
   always_ff @(posedge clk or negedge rst_n) begin
@@ -67,7 +94,7 @@ end
     end else begin
       if (start) begin
         start_enable <= 1;
-      end else if (j_chunk_counter == (NUM_J_CHUNKS - 1) || energy_exceeded) begin
+      end else if (j_chunk_counter == (NUM_J_CHUNKS-1) || energy_exceeded) begin
         start_enable <= 0;
       end
     end
@@ -85,8 +112,7 @@ end
 
   // Instantiate the counter module
   counter #(
-    .WIDTH($clog2(NUM_J_CHUNKS)),
-    .MAX_VALUE(NUM_J_CHUNKS )
+    .WIDTH($clog2(NUM_J_CHUNKS))
   ) counter_inst (
     .clk(clk),
     .rst_n(rst_n),
@@ -95,14 +121,14 @@ end
     .wrap() // Not used
   );
 
-  // Accumulate temp_Energy_next into Energy_next
+  // Accumulate block_sum  into Energy_next
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             Energy_next <= 0;
         end else if (start_enable_prev && !start_enable) begin
             Energy_next <= 0;
-        end else if (start_enable) begin
-            Energy_next <= Energy_next + temp_Energy_next;
+        end else if (start || start_enable) begin
+            Energy_next <= Energy_next + block_sum;
         end
     end
   
