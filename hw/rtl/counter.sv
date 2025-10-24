@@ -1,7 +1,6 @@
 //Parameterized Counter Module
 module counter #(
-    parameter int WIDTH = 8,              // Width of the counter
-    parameter int MAX_VALUE = 2**WIDTH-1  // Maximum value (default: maximum for WIDTH bits)
+    parameter int WIDTH = 8             // Width of the counter
 )(
     input  logic                clk,      // Clock input
     input  logic                rst_n,    // Active-low reset (asynchronous)
@@ -9,7 +8,7 @@ module counter #(
     output logic [WIDTH-1:0]    count,    // Current count value
     output logic                wrap      // Indicates counter wrapped around
 );
-
+    localparam int MAX_VALUE = 2**WIDTH-1;
     // Next value logic
     logic [WIDTH-1:0] next_count;
     

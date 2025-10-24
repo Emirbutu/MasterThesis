@@ -8,7 +8,7 @@ module adder_subtractor_unit #(
     output logic signed [WIDTH-1:0] y
 );
     always_comb begin
-        if (sub)
+        if (!sub)
             y = a - b;
         else
             y = a + b;
