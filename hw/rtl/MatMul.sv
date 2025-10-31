@@ -26,7 +26,8 @@ module MatMul #(
     // J matrix input: VECTOR_SIZE rows × J_COLS_PER_READ columns, each element is J_ELEMENT_WIDTH bits
     // Unpacked (big-endian) ordering for rows/columns: [0:VECTOR_SIZE-1][0:J_COLS_PER_READ-1]
     input  logic [J_ELEMENT_WIDTH-1:0]                J_Matrix_chunk [0:VECTOR_SIZE-1][0:J_COLS_PER_READ-1],
-    input  logic [ENERGY_WIDTH-1:0]                   Energy_previous
+    input  logic [ENERGY_WIDTH-1:0]                   Energy_previous,
+    output logic signed [ENERGY_WIDTH-1:0] Energy_next_output
 );
   // Accumulator for final result
   logic signed [ENERGY_WIDTH-1:0] Energy_next; // sign bit extended
@@ -37,7 +38,7 @@ module MatMul #(
   logic start_enable_prev;
   logic energy_exceeded;
   assign energy_exceeded = (Energy_next >= Energy_previous);
-
+  assign Energy_next_output = Energy_next;
   // Generate the multiply-accumulate logic
  // Width to safely accumulate J_COLS_PER_CLK signed dot-products
   localparam int ACC_WIDTH = INT_RESULT_WIDTH + $clog2(J_COLS_PER_CLK) + 1; // +1 for sign
