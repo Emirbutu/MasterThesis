@@ -41,12 +41,16 @@ module MatMul #(
   // Generate the multiply-accumulate logic
  // Width to safely accumulate J_COLS_PER_CLK signed dot-products
   localparam int ACC_WIDTH = INT_RESULT_WIDTH + $clog2(J_COLS_PER_CLK) + 1; // +1 for sign
+  // width for column index into sigma
+  localparam int SIG_IDX_W = $clog2(VECTOR_SIZE);
+
+  // base column of current chunk
+  wire [SIG_IDX_W-1:0] col_base = j_chunk_counter * J_COLS_PER_READ;
 
   // Chain across columns for σ^T accumulation
   logic signed [ACC_WIDTH-1:0] stage2_sum [0:J_COLS_PER_CLK];
   assign stage2_sum[0] = '0;
   logic signed [ACC_WIDTH-1:0] block_sum; // final sum for a J chunk
-
   genvar c, r;
   generate
     for (c = 0; c < J_COLS_PER_CLK; c++) begin : MULTIPLE_COLUMNS_AT_ONCE
@@ -68,18 +72,20 @@ module MatMul #(
         .J_col   (this_col),
         .dot_out (dot_c)
       );
-
+      
       // Sign-extend dot_c up to the σ^T accumulator width
       wire signed [ACC_WIDTH-1:0] dot_ext =
         {{(ACC_WIDTH-INT_RESULT_WIDTH){dot_c[INT_RESULT_WIDTH-1]}}, dot_c}; // I copied the sign bit and filled the upper bits with it to do the sign-extension
 
+      wire [SIG_IDX_W-1:0] col_idx = col_base + c;
+      wire sigma_col_bit = sigma[col_idx];
       // σ^T accumulation: 0=subtract, 1=add
       adder_subtractor_unit #(
         .WIDTH(ACC_WIDTH)   
       ) addsub_sigmaT_i (
         .a   (stage2_sum[c]),
         .b   (dot_ext),
-        .sub (sigma[c]),
+        .sub (sigma_col_bit),  // 0 = subtract, 1 = add]),
         .y   (stage2_sum[c+1])
       );
     end
@@ -94,7 +100,7 @@ module MatMul #(
     end else begin
       if (start) begin
         start_enable <= 1;
-      end else if (j_chunk_counter == (NUM_J_CHUNKS-1) || energy_exceeded) begin
+      end else if (j_chunk_counter == (NUM_J_CHUNKS-1)) begin //early stop is canceled for now
         start_enable <= 0;
       end
     end
@@ -127,7 +133,7 @@ module MatMul #(
             Energy_next <= 0;
         end else if (start_enable_prev && !start_enable) begin
             Energy_next <= 0;
-        end else if (start || start_enable) begin
+        end else if (start_enable) begin
             Energy_next <= Energy_next + block_sum;
         end
     end

@@ -4,7 +4,7 @@ module adder_subtractor_unit #(
 )(
     input  logic signed [WIDTH-1:0] a,
     input  logic signed [WIDTH-1:0] b,
-    input  logic                    sub,  // 0 = add, 1 = subtract
+    input  logic                    sub,  // 1 = add, 0 = subtract
     output logic signed [WIDTH-1:0] y
 );
     always_comb begin

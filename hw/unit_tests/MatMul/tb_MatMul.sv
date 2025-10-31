@@ -79,8 +79,8 @@ module tb_MatMul;
   endfunction
 
   // Capture last running energy
-  logic signed [ENERGY_WIDTH-1:0] last_energy;
-  always @(posedge clk) if (dut.start_enable) last_energy <= dut.Energy_next;
+  //logic signed [ENERGY_WIDTH-1:0] last_energy;
+  //always @(posedge clk) if (dut.start_enable_prev) last_energy <= dut.Energy_next;
 
   // One deterministic run
   task automatic run_case(input string name,
@@ -100,12 +100,12 @@ module tb_MatMul;
 
     // Wait run complete
     wait (dut.start_enable);
-    while (dut.start_enable) @(posedge clk);
+    while (dut.start_enable) @(posedge clk);// proceed with the rest of the task after 1 CLK period of start_enable being low
 
-    if (last_energy === E_ref)
-      $display("[PASS] %-12s  J=%0d  DUT=%0d  EXP=%0d", name, JVAL, last_energy, E_ref);
+    if (dut.Energy_next === E_ref)
+      $display("[PASS] %-12s  J=%0d  DUT=%0d  EXP=%0d", name, JVAL, dut.Energy_next , E_ref);
     else
-      $error  ("[FAIL] %-12s  J=%0d  DUT=%0d  EXP=%0d", name, JVAL, last_energy, E_ref);
+      $error  ("[FAIL] %-12s  J=%0d  DUT=%0d  EXP=%0d", name, JVAL, dut.Energy_next , E_ref);
   endtask
 
   // === Stimulus ===
