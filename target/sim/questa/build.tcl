@@ -22,7 +22,7 @@ vmap work ${WLIB}
 #vmap work_lib ${WLIB}
 
 source ${HDL_FILE_LIST}
-
+puts "$HDL_FILES"
 # TODO break script if compilation is not succesfull
 puts "Building ${SIM_NAME} ..."
 puts "$HDL_FILES"
@@ -34,10 +34,10 @@ foreach file $HDL_FILES {
 
 # Optimization and object preparation
 if { $DBG == 1 } {
-    vopt -quiet -work ${WLIB} +acc tb_${SIM_NAME} -o dbg_${SIM_NAME}
+    vopt -quiet -work ${WLIB} +acc tb_${SIM_NAME}_rand -o dbg_${SIM_NAME}
     set OBJ "dbg_${SIM_NAME}"
 } else {
-    vopt -quiet -work ${WLIB} tb_${SIM_NAME} -o nodbg_${SIM_NAME}
+    vopt -quiet -work ${WLIB} tb_${SIM_NAME}_rand -o nodbg_${SIM_NAME}
     set OBJ "nodbg_${SIM_NAME}"
 }
 

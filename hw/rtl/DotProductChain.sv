@@ -25,7 +25,7 @@ module DotProductChain #(
             ) addsub_i (
                 .a  (stage_sum[k]),
                 .b  (b_ext),
-                .sub(sigma[k]),   // 1 = subtract, 0 = add 
+                .sub(sigma[k]),   // 0 = subtract, 1 = add 
                 .y  (stage_sum[k+1])
             );
         end
