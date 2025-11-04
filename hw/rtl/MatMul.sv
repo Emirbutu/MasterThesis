@@ -1,7 +1,7 @@
 //License: KU Leuven
 module MatMul #(
     // Memory interface parameters
-    parameter int MEM_BANDWIDTH   = 4096,        // Memory bandwidth in bits per clock cycle
+    parameter int MEM_BANDWIDTH   = 4096/4,        // Memory bandwidth in bits per clock cycle
     // Matrix/Vector dimensions
     parameter int VECTOR_SIZE     = 256,         // Number of elements in sigma vector (configurable)
     parameter int J_ELEMENT_WIDTH = 4,           // Bit width of each J matrix element
