@@ -218,7 +218,7 @@ transcript
 !.pixi/config.toml
 .bender/*
 .opt/
-
+Miniconda3-latest-Linux-x86_64.sh
 .svf
 
 **/outputs/
