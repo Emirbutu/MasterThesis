@@ -1,0 +1,70 @@
+# source /users/students/r1024900/MasterThesis/target/sim/questa/build.tcl
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 22:34:51 on Nov 06,2025
+# vlog -sv -work /users/students/r1024900/MasterThesis/hw/unit_tests/MatMul/work/work_MatMul ./tb_MatMul.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module tb_MatMul
+# ** Warning: ./tb_MatMul.sv(43): (vlog-2121) Illegal concatenation of an unsized constant. Will treat it as a 32-bit value.
+# 
+# Top level modules:
+# 	tb_MatMul
+# End time: 22:34:51 on Nov 06,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 1
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 22:34:51 on Nov 06,2025
+# vlog -sv -work /users/students/r1024900/MasterThesis/hw/unit_tests/MatMul/work/work_MatMul ../../rtl/MatMul.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module MatMul
+# ** Warning: ../../rtl/MatMul.sv(28): (vlog-13314) Defaulting port 'J_Matrix_chunk' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+# 
+# Top level modules:
+# 	MatMul
+# End time: 22:34:52 on Nov 06,2025, Elapsed time: 0:00:01
+# Errors: 0, Warnings: 1
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 22:34:52 on Nov 06,2025
+# vlog -sv -work /users/students/r1024900/MasterThesis/hw/unit_tests/MatMul/work/work_MatMul ../../rtl/adder_subtractor_unit.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module adder_subtractor_unit
+# 
+# Top level modules:
+# 	adder_subtractor_unit
+# End time: 22:34:52 on Nov 06,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 22:34:52 on Nov 06,2025
+# vlog -sv -work /users/students/r1024900/MasterThesis/hw/unit_tests/MatMul/work/work_MatMul ../../rtl/counter.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module counter
+# 
+# Top level modules:
+# 	counter
+# End time: 22:34:52 on Nov 06,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 22:34:52 on Nov 06,2025
+# vlog -sv -work /users/students/r1024900/MasterThesis/hw/unit_tests/MatMul/work/work_MatMul ../../rtl/DotProductTree.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module DotProductTree
+# ** Warning: ../../rtl/DotProductTree.sv(12): (vlog-13314) Defaulting port 'J_col' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+# 
+# Top level modules:
+# 	DotProductTree
+# End time: 22:34:52 on Nov 06,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 1
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 22:34:52 on Nov 06,2025
+# vlog -sv -work /users/students/r1024900/MasterThesis/hw/unit_tests/MatMul/work/work_MatMul ../../rtl/adder_tree_layer.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module adder_tree_layer
+# ** Warning: ../../rtl/adder_tree_layer.sv(6): (vlog-13314) Defaulting port 'inputs' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+# 
+# Top level modules:
+# 	adder_tree_layer
+# End time: 22:34:52 on Nov 06,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 1
+# ** Note: (vopt-220) 'modelsim.ini' is used as the ini file.
+# ** Error (suppressible): ./tb_MatMul.sv(216): (vopt-7063) Failed to find 'tb_MatMul_rand' in hierarchical name 'tb_MatMul_rand'.
+#         Region: tb_MatMul
+# Optimization failed
+# /esat/micas-data/software/Mentor/questasim_2025.2/linux/vopt failed.

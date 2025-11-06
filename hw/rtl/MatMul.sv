@@ -64,7 +64,7 @@ module MatMul #(
 
       // Per-column dot product (Σ with J_col[c]); UNSIGNED J w/ zero-extend handled inside
       wire signed [INT_RESULT_WIDTH-1:0] dot_c;
-      DotProductChain #(
+      DotProductTree #(
         .VECTOR_SIZE      (VECTOR_SIZE),
         .J_ELEMENT_WIDTH  (J_ELEMENT_WIDTH),
         .INT_RESULT_WIDTH (INT_RESULT_WIDTH)
