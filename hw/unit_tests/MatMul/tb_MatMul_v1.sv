@@ -12,7 +12,6 @@ module tb_MatMul_v1;
   parameter int INT_RESULT_WIDTH = $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH + 1;        // +1 headroom
   // UPDATED: +1 sign headroom so J=15 fits (max 983,040)
   parameter int ENERGY_WIDTH     = J_ELEMENT_WIDTH + 2*$clog2(VECTOR_SIZE) + 1;      // = 21
-
   // --- I/O ---
   logic clk, rst_n, start;
   logic [VECTOR_SIZE-1:0] sigma;                           // our spec: 1=add, 0=sub
@@ -95,13 +94,14 @@ module tb_MatMul_v1;
     fill_J_const(JVAL);
     E_ref_full = golden_energy_constJ(sigma, JVAL);
     E_ref      = truncE(E_ref_full);
-
+    $display("=== DEBUGGING2 ===");
     @(posedge clk); start = 1; @(posedge clk); start = 0;
 
     // Wait run complete
     wait (dut.start_enable);
+    $display("=== DEBUGGING3 ===");
     while (dut.start_enable) @(posedge clk);// proceed with the rest of the task after 1 CLK period of start_enable being low
-
+    $display("=== DEBUGGING4 ===");
     if (dut.Energy_next === E_ref)
       $display("[PASS] %-12s  J=%0d  DUT=%0d  EXP=%0d", name, JVAL, dut.Energy_next , E_ref);
     else
@@ -110,9 +110,10 @@ module tb_MatMul_v1;
 
   // === Stimulus ===
   initial begin
+    $display(dut.PIPE_DEPTH);
     $display("=== MatMul simple self-check (const J, simple sigma) ===");
     @(posedge rst_n); @(posedge clk);
-
+    $display("=== DEBUGGING1 ===");
     // J=1
     run_case("all0_J1" , 4'd1 , 0);
     run_case("all1_J1" , 4'd1 , 1);
@@ -130,7 +131,7 @@ module tb_MatMul_v1;
   // === VCD ===
   initial begin
     $dumpfile("MatMul_tb.vcd");
-    $dumpvars(0, tb_MatMul);
+    $dumpvars(0, tb_MatMul_v1);
   end
 
 endmodule

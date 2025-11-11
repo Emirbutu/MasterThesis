@@ -19,7 +19,9 @@ module DotProductTree #(
   input  logic                                         rst_n,
   input  logic [VECTOR_SIZE-1:0]                     sigma,      // 1 -> +J, 0 -> -J
   input  logic [J_ELEMENT_WIDTH-1:0]                 J_col [0:VECTOR_SIZE-1],
-  output logic signed [INT_RESULT_WIDTH-1:0]         dot_out
+  input start,
+  output logic signed [INT_RESULT_WIDTH-1:0]         dot_out,
+  output logic                                        start_out 
 );
 /*
   // -------- utilities --------
@@ -63,7 +65,7 @@ module DotProductTree #(
   genvar i;
   generate
   if(PIPED == 0) begin : GEN_COMB_TREE
-  
+  assign start_out = start;  
     for (i = 0; i < LEVELS; i++) begin : LAYER
       localparam int W_IN         = W0 + i;
       localparam int COUNT_IN    = (VECTOR_SIZE >> i);
@@ -96,6 +98,16 @@ module DotProductTree #(
     end else begin : GEN_PIPE_TREE
       // Stage 0 (between level0 and layer0)
       logic [W0-1:0] stage0_data [0:VECTOR_SIZE-1];
+      logic start_stage [0:LEVELS]; 
+      assign start_stage[0] = start;
+      logic start_stage0_reg;
+      if (PIPE_STAGE_MASK[0]) begin : GEN_START_STAGE0_REG
+        `FF(start_stage0_reg, start_stage[0], '0, clk, rst_n)
+        assign start_stage[1] = start_stage0_reg;
+      end else begin : GEN_START_STAGE0_WIRE
+        assign start_stage[1] = start_stage[0];
+      end
+
       if (PIPE_STAGE_MASK[0]) begin : GEN_STAGE0_REG
         for (genvar m = 0; m < VECTOR_SIZE; m++) begin : REG
           `FF(stage0_data[m], level0[m], '0, clk, rst_n)
@@ -133,17 +145,21 @@ module DotProductTree #(
           .inputs  ( in_i  ),
           .outputs ( out_i )
         );
-
+        logic start_stage_reg;
         if ((i+1) < LEVELS ? PIPE_STAGE_MASK[i+1] : 1'b0) begin : REG_STAGE
           for (genvar n = 0; n < COUNT_OUT; n++) begin : REG
             `FF(stage_out[n], out_i[n], '0, clk, rst_n)
           end
+          `FF(start_stage_reg, start_stage[i+1], '0, clk, rst_n)
+          assign start_stage[i+2] = start_stage_reg;
         end else begin : WIRE_STAGE
           for (genvar n = 0; n < COUNT_OUT; n++) begin : WIRE
             assign stage_out[n] = out_i[n];
           end
+          assign start_stage[i+2] = start_stage[i+1];
         end
       end
+      assign start_out = start_stage[LEVELS];
     end
   endgenerate
 

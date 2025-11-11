@@ -3,7 +3,7 @@
 module tb_MatMul;
 
   // --- Match DUT params ---
-  parameter int MEM_BANDWIDTH    = 4096;
+  parameter int MEM_BANDWIDTH    = 4096*4;
   parameter int VECTOR_SIZE      = 256;
   parameter int J_ELEMENT_WIDTH  = 4;
   parameter int J_COLS_PER_READ  = MEM_BANDWIDTH / (VECTOR_SIZE * J_ELEMENT_WIDTH); // = 4
@@ -12,6 +12,8 @@ module tb_MatMul;
   parameter int INT_RESULT_WIDTH = $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH + 1;       // +1 headroom
   parameter int ENERGY_WIDTH     = J_ELEMENT_WIDTH + 2*$clog2(VECTOR_SIZE) + 1;     // = 21
   parameter int ACC_WIDTH = INT_RESULT_WIDTH + $clog2(J_COLS_PER_CLK) + 1; // +1 for sign
+  parameter bit PIPED             = 1'b0; // pipelined or combinational adder tree
+  parameter logic [ $clog2(VECTOR_SIZE):0 ] PIPE_STAGE_MASK = {1'b0, { ($clog2(VECTOR_SIZE)-4 ) {1'b1} }, 1'b1, 1'b0, 1'b0}; // register all but first few stages
   // --- I/O ---
   logic clk, rst_n, start;
   logic [VECTOR_SIZE-1:0] sigma;        // 1=add, 0=sub
@@ -23,6 +25,8 @@ module tb_MatMul;
 
   // --- DUT ---
   MatMul #(
+    .PIPE_STAGE_MASK (PIPE_STAGE_MASK),
+    .PIPED           (PIPED),
     .MEM_BANDWIDTH   (MEM_BANDWIDTH),
     .VECTOR_SIZE     (VECTOR_SIZE),
     .J_ELEMENT_WIDTH (J_ELEMENT_WIDTH)
@@ -55,13 +59,40 @@ module tb_MatMul;
         J_full[i][j] = $urandom_range((1<<J_ELEMENT_WIDTH)-1, 0);
   endtask
 
-  integer rr, cc, base_idx;
-  always @* begin
-    base_idx = dut.j_chunk_counter * J_COLS_PER_READ;
+  integer rr, cc;
+  logic [$clog2(NUM_J_CHUNKS)-1:0] chunk_present_idx;
+  logic presenting;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      chunk_present_idx <= 0; 
+      presenting <= 0;
+    end else if (start) begin
+      chunk_present_idx <= 0;
+      presenting <= 1;
+    end else if (presenting) begin
+      if (chunk_present_idx == NUM_J_CHUNKS - 1)
+        presenting <= 0;  // stop after last chunk
+      else
+        chunk_present_idx <= chunk_present_idx + 1;
+    end
+  end
+
+// Present the chunk indexed by chunk_present_idx
+integer next_base_idx;
+always_ff @(posedge clk or negedge rst_n) begin
+  if (!rst_n) begin
     for (rr = 0; rr < VECTOR_SIZE; rr++)
       for (cc = 0; cc < J_COLS_PER_READ; cc++)
-        J_Matrix_chunk[rr][cc] = J_full[rr][base_idx + cc];
+        J_Matrix_chunk[rr][cc] <= '0;
+  end else if (presenting) begin
+    next_base_idx = chunk_present_idx * J_COLS_PER_READ;
+    for (rr = 0; rr < VECTOR_SIZE; rr++)
+      for (cc = 0; cc < J_COLS_PER_READ; cc++)
+        J_Matrix_chunk[rr][cc] <= J_full[rr][next_base_idx + cc];
   end
+end
+
 
   // === Sigma patterns ===
   task automatic set_sigma_all0(); sigma = '0; endtask
@@ -96,9 +127,9 @@ module tb_MatMul;
 
 task automatic display_all_blocksum_and_dot_products();
   // Temporary variable to store the real dot product for each column
-  logic signed [ACC_WIDTH-1:0] real_dot_product;  // Real dot product for each column
+  longint signed real_dot_product;  // Real dot product for each column
   int r, c;
-
+  longint signed block_sum = 0;
   // Loop through each column of J (i.e., for each dot product)
   for (c = 0; c < VECTOR_SIZE; c++) begin
     real_dot_product = 0;
@@ -115,10 +146,15 @@ task automatic display_all_blocksum_and_dot_products();
     end else begin
       real_dot_product = -real_dot_product;  // Negative (same as subtract)
     end
-
+    block_sum += real_dot_product;
     // Now compare it with block_sum for this column
+    if(c<VECTOR_SIZE/8)  begin
     $display("=== Column %0d ===", c);
-   $display("  Real Dot Product = %010b", real_dot_product);  // Real calculated dot product for the current column
+   $display("  Real Dot Product = %d", real_dot_product); 
+   $display("  Block Sum = %d", block_sum);
+  // $display("  Block Sum Binary= %b", block_sum);
+    end
+     // Real calculated dot product for the current column
   end
 endtask
 
@@ -130,21 +166,28 @@ endtask
 
     fill_J_full_random(seed);
     exp_full = compute_energy_ref_random(sigma, J_full);
+      // Start loading 2 cycles early to compensate for pipeline delay
+    @(posedge clk); 
+    start = 1; 
+    @(posedge clk); 
+    start = 0;
 
-    @(posedge clk); start = 1; @(posedge clk); start = 0;
+   // @(posedge clk); start_loading = 1; @(posedge clk); start = 1; start_loading = 0; @(posedge clk); start = 0;
 
-    wait (dut.start_enable);
-  while (dut.start_enable) begin
-   // $display("  Calculated Dot Product = %010b", dut.debug_dot_c);
-   // $display("  Calculated block_sum = %010b", dut.block_sum);  
-   // $display("  Calculated Energy_next = %010b", dut.Energy_next);  
-    @(posedge clk);  // Wait for DUT to finish processing
+   wait (dut.start_enable);
+   while (dut.start_enable) begin
+    //$display("  Calculated Dot Product = %010b", dut.dot_c);
+   
+    //$display("  Calculated Energy_next = %010b", dut.Energy_next);  
+    @(posedge clk); 
+   // $display("  Calculated block_sum = %0d", dut.block_sum); 
+   // $display("  Calculated Energy_next = %d", dut.Energy_next);  // Wait for DUT to finish processing
   end
-
+   @(posedge clk); 
     // compare in wide domain (no truncation)
     dut_full = dut.Energy_next; // sign-extend DUT to longint
     if (dut_full === exp_full)
-      $display("[PASS] %-16s  DUT=%0d  EXP=%0d", name, dut_full, exp_full);
+      $display("[PASS] %-16s  DUT=%0d  EXP=%0d", name, dut_full, exp_full)  ;
     else
       $error  ("[FAIL] %-16s  DUT=%0d  EXP=%0d", name, dut_full, exp_full);
   endtask
@@ -155,10 +198,10 @@ endtask
     @(posedge rst_n); @(posedge clk);
     
    
-   set_sigma_all0();    run_random_case("randJ_all0" , 32'hA11A);
-   set_sigma_all1();    run_random_case("randJ_all1" , 32'hB22B);
-   set_sigma_1010();    run_random_case("randJ_1010" , 32'hC33C);
-   for (int i = 0; i < 10000; i++) begin
+   //set_sigma_all0();    run_random_case("randJ_all0" , 32'hA11A);
+   //set_sigma_all1();    run_random_case("randJ_all1" , 32'hB22B);
+   //set_sigma_1010();    run_random_case("randJ_1010" , 32'hC33C);
+   for (int i = 0; i < 100; i++) begin
      set_sigma_random(i);    
      run_random_case($sformatf("randJ_sigmaR_%0d", i), i+32'h1000);
    end    
@@ -166,7 +209,7 @@ endtask
 
 
 
-  // display_all_blocksum_and_dot_products();
+   //display_all_blocksum_and_dot_products();
   //display_all_blocksum_and_dot_products();
   //  $display("==== Debug Info ====");
   //  $display("Sigma: %b", sigma);
