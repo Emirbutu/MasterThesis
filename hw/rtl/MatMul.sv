@@ -71,34 +71,6 @@ module MatMul #(
       for (r = 0; r < VECTOR_SIZE; r++) begin : MAP_ROWS
         assign J_cols[c][r] = J_Matrix_chunk[r][c];
       end
-
-      // Per-column dot product (Σ with J_col[c]); UNSIGNED J w/ zero-extend handled inside
-      wire signed [INT_RESULT_WIDTH-1:0] dot_c;
-      DotProductChain #(
-        .VECTOR_SIZE      (VECTOR_SIZE),
-        .J_ELEMENT_WIDTH  (J_ELEMENT_WIDTH),
-        .INT_RESULT_WIDTH (INT_RESULT_WIDTH)
-      ) dpc_i (
-        .sigma   (sigma),
-        .J_col   (this_col),
-        .dot_out (dot_c)
-      );
-      
-      // Sign-extend dot_c up to the σ^T accumulator width
-      wire signed [ACC_WIDTH-1:0] dot_ext =
-        {{(ACC_WIDTH-INT_RESULT_WIDTH){dot_c[INT_RESULT_WIDTH-1]}}, dot_c}; // I copied the sign bit and filled the upper bits with it to do the sign-extension
-
-      wire [SIG_IDX_W-1:0] col_idx = col_base + c;
-      wire sigma_col_bit = sigma[col_idx];
-      // σ^T accumulation: 0=subtract, 1=add
-      adder_subtractor_unit #(
-        .WIDTH(ACC_WIDTH)   
-      ) addsub_sigmaT_i (
-        .a   (stage2_sum[c]),
-        .b   (dot_ext),
-        .sub (sigma_col_bit),  // 0 = subtract, 1 = add]),
-        .y   (stage2_sum[c+1])
-      );
     end
   endgenerate
 
