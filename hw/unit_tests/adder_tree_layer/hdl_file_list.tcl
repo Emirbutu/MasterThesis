@@ -5,11 +5,6 @@
 set HDL_PATH ../../rtl
 
 set HDL_FILES [ list \
-    "./tb_MatMul.sv" \
-    "${HDL_PATH}/MatMul.sv" \
-    "${HDL_PATH}/adder_subtractor_unit.sv" \
-    "${HDL_PATH}/counter.sv" \
-    "${HDL_PATH}/DotProductTree.sv" \
-    "${HDL_PATH}/DotProductTree_array.sv" \
+    "./tb_adder_tree_layer.sv" \
     "${HDL_PATH}/adder_tree_layer.sv" \
 ]

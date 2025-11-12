@@ -10,5 +10,7 @@ set HDL_LIST [ list \
     ${HDL_PATH}/adder_subtractor_unit.sv \
     ${HDL_PATH}/counter.sv \
     ${HDL_PATH}/DotProductChain.sv \
+    ${HDL_PATH}/DotProductTree.sv \
+    ${HDL_PATH}/DotProductTree_array.sv \
     ${HDL_PATH}/MatMul.sv \
 ]
