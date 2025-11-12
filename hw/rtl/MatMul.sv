@@ -16,9 +16,10 @@ module MatMul #(
     // Energy bit width calculation
     parameter int ENERGY_WIDTH    = $clog2(VECTOR_SIZE) + $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH +1,  // +1 for sign
     // Adder tree parameters
+    parameter bit REG_FINAL         = 1'b1,
     parameter int LEVELS         = $clog2(VECTOR_SIZE), // number of levels in the adder tree
-    parameter logic [LEVELS:0] PIPE_STAGE_MASK = {1'b1, {LEVELS{1'b0}}}, //  pipelined stages
-    parameter bit PIPED             = 1'b1,
+    parameter logic [LEVELS:0] PIPE_STAGE_MASK = {1'b0, {LEVELS{1'b1}}}, //  pipelined stages
+    parameter bit PIPED             = 1'b0,
     parameter int PIPE_DEPTH   = PIPED ? $countones(PIPE_STAGE_MASK) : 0 // pipelined or combinational adder tree
 ) (
     // Clock and reset
@@ -32,7 +33,6 @@ module MatMul #(
     // Unpacked (big-endian) ordering for rows/columns: [0:VECTOR_SIZE-1][0:J_COLS_PER_READ-1]
     input  logic [J_ELEMENT_WIDTH-1:0]                J_Matrix_chunk [0:VECTOR_SIZE-1][0:J_COLS_PER_READ-1],
     input  logic [ENERGY_WIDTH-1:0]                   Energy_previous,
-    output logic sigma_needed_debug [0:J_COLS_PER_CLK-1],
     output logic signed [ENERGY_WIDTH-1:0] Energy_next_output
 );
   // Accumulator for final result
@@ -80,12 +80,13 @@ module MatMul #(
 
   // Instantiate the array: parallel dot products, no accumulation here
   generate
-  DotProductTree_array #(
-    .PIPED            (PIPED),
-    .VECTOR_SIZE      (VECTOR_SIZE),
-    .J_ELEMENT_WIDTH  (J_ELEMENT_WIDTH),
-    .LEVELS           ($clog2(VECTOR_SIZE)),
-    .PIPE_STAGE_MASK  (PIPE_STAGE_MASK),
+    DotProductTree_array #(
+      .REG_FINAL         (REG_FINAL),
+      .PIPED            (PIPED),
+      .VECTOR_SIZE      (VECTOR_SIZE),
+      .J_ELEMENT_WIDTH  (J_ELEMENT_WIDTH),
+      .LEVELS           ($clog2(VECTOR_SIZE)),
+      .PIPE_STAGE_MASK  (PIPE_STAGE_MASK),
     .INT_RESULT_WIDTH (INT_RESULT_WIDTH),
     .LANES            (LANES)
   ) u_dpa (
@@ -129,8 +130,6 @@ adder_subtractor_unit #(
  endgenerate
   
 assign block_sum = stage2_sum[LANES];
-
-assign sigma_needed_debug = sigma_needed;
 
 
 // Use start_enable_pulse to set start_enable

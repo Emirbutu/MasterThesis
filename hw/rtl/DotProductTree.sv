@@ -13,7 +13,8 @@ module DotProductTree #(
   parameter int LEVELS            = $clog2(VECTOR_SIZE),
   parameter logic [LEVELS-1:0] PIPE_STAGE_MASK = '0,
   // term width = Jw+1, final width = (Jw+1) + ceil(log2(VECTOR_SIZE))
-  parameter int INT_RESULT_WIDTH  = (J_ELEMENT_WIDTH + 1) + $clog2(VECTOR_SIZE)
+  parameter int INT_RESULT_WIDTH  = (J_ELEMENT_WIDTH + 1) + $clog2(VECTOR_SIZE),
+  parameter bit REG_FINAL         = 1'b1
 )(
   input  logic                                         clk,
   input  logic                                         rst_n,
@@ -65,7 +66,7 @@ module DotProductTree #(
   genvar i;
   generate
   if(PIPED == 0) begin : GEN_COMB_TREE
-  assign start_out = start;  
+  //assign start_out = start;  
     for (i = 0; i < LEVELS; i++) begin : LAYER
       localparam int W_IN         = W0 + i;
       localparam int COUNT_IN    = (VECTOR_SIZE >> i);
@@ -98,7 +99,7 @@ module DotProductTree #(
     end else begin : GEN_PIPE_TREE
       // Stage 0 (between level0 and layer0)
       logic [W0-1:0] stage0_data [0:VECTOR_SIZE-1];
-      logic start_stage [0:LEVELS]; 
+      logic start_stage [0:LEVELS+1]; 
       assign start_stage[0] = start;
       logic start_stage0_reg;
       if (PIPE_STAGE_MASK[0]) begin : GEN_START_STAGE0_REG
@@ -159,15 +160,31 @@ module DotProductTree #(
           assign start_stage[i+2] = start_stage[i+1];
         end
       end
-      assign start_out = start_stage[LEVELS];
+    //  assign start_out = start_stage[LEVELS];
     end
   endgenerate
 
+  logic                               start_pre;
+  logic signed [INT_RESULT_WIDTH-1:0] dot_pre;
+ 
   generate
     if (PIPED == 0) begin : GEN_OUT_COMB
-      assign dot_out = $signed( GEN_COMB_TREE.LAYER[LEVELS-1].out_i[0] );
+      assign dot_pre   = $signed(GEN_COMB_TREE.LAYER[LEVELS-1].out_i[0]);
+      assign start_pre = start;
     end else begin : GEN_OUT_PIPE
-      assign dot_out = $signed( GEN_PIPE_TREE.LAYER_PIPE[LEVELS-1].stage_out[0] );
+      assign dot_pre   = $signed(GEN_PIPE_TREE.LAYER_PIPE[LEVELS-1].stage_out[0]);
+      assign start_pre = GEN_PIPE_TREE.start_stage[LEVELS];
+    end
+  endgenerate
+
+  // Optional final register stage using FF macro
+  generate
+    if (REG_FINAL) begin : GEN_FINAL_REG
+      `FF(dot_out,   dot_pre,   '0, clk, rst_n)
+      `FF(start_out, start_pre, '0, clk, rst_n)
+    end else begin : GEN_FINAL_WIRE
+      assign dot_out   = dot_pre;
+      assign start_out = start_pre;
     end
   endgenerate
 

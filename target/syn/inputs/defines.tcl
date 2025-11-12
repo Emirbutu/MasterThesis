@@ -65,7 +65,7 @@ if {[info exists ::env(TREE)]} {
 if {[info exists ::env(CLK_SPD)]} { 
     set CLK_SPD $::env(CLK_SPD)
 } else {
-    set CLK_SPD 10000
+    set CLK_SPD 100000
 }
 
 # DOTP_ARCH = 0 for base architecture, 1 for partitioned architecture, 2 for sequential architecture

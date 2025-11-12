@@ -4,6 +4,7 @@ module DotProductTree_array #(
   parameter int  J_ELEMENT_WIDTH   = 4,
   parameter int  LEVELS            = $clog2(VECTOR_SIZE),
   parameter logic [LEVELS-1:0] PIPE_STAGE_MASK = '0,
+  parameter bit REG_FINAL         = 1'b1,
   parameter int  INT_RESULT_WIDTH  = (J_ELEMENT_WIDTH + 1) + $clog2(VECTOR_SIZE),
   parameter int  LANES             = 4
 )(
@@ -20,6 +21,7 @@ module DotProductTree_array #(
   generate
     for (l = 0; l < LANES; l++) begin : G_LANES
       DotProductTree #(
+        .REG_FINAL         (REG_FINAL),
         .PIPED            (PIPED),
         .VECTOR_SIZE      (VECTOR_SIZE),
         .J_ELEMENT_WIDTH  (J_ELEMENT_WIDTH),
