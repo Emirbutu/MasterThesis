@@ -80,13 +80,15 @@ read_hdl -sv ${HDL_LIST}
 elaborate ${DESIGN}
 check_design -unresolved
 
-if {$RETIME} {
-    if {$DESIGN == "syn_tle"} {
-        set_attribute dont_retime true syn_tle/input_buffer
-        set_attribute dont_retime true syn_tle/output_buffer
-        set_attribute retime true *MatMul*
-    }
-}
+# if {$RETIME} {
+#     if {$DESIGN == "syn_tle"} {
+#         set_attribute dont_retime true syn_tle/input_buffer
+#         set_attribute dont_retime true syn_tle/output_buffer
+#         set_attribute retime true *MatMul*
+#     }
+# }
+
+set_attribute retime true *MatMul*
 
 read_sdc ${INPUTS_DIR}/constraints.sdc
 
