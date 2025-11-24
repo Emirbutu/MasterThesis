@@ -12,4 +12,5 @@ set HDL_FILES [ list \
     "${HDL_PATH}/DotProductTree.sv" \
     "${HDL_PATH}/DotProductTree_array.sv" \
     "${HDL_PATH}/adder_tree_layer.sv" \
+    "${HDL_PATH}/adder_tree_layer_signed.sv" \
 ]

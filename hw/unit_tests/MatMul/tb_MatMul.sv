@@ -3,7 +3,7 @@
 module tb_MatMul;
 
   // --- Match DUT params ---
-  parameter int MEM_BANDWIDTH    = 4096*4;
+  parameter int MEM_BANDWIDTH    = 4096/4;
   parameter int VECTOR_SIZE      = 256;
   parameter int J_ELEMENT_WIDTH  = 4;
   parameter int J_COLS_PER_READ  = MEM_BANDWIDTH / (VECTOR_SIZE * J_ELEMENT_WIDTH); // = 4
@@ -12,8 +12,8 @@ module tb_MatMul;
   parameter int INT_RESULT_WIDTH = $clog2(VECTOR_SIZE) + J_ELEMENT_WIDTH + 1;       // +1 headroom
   parameter int ENERGY_WIDTH     = J_ELEMENT_WIDTH + 2*$clog2(VECTOR_SIZE) + 1;     // = 21
   parameter int ACC_WIDTH = INT_RESULT_WIDTH + $clog2(J_COLS_PER_CLK) + 1; // +1 for sign
-  parameter bit PIPED             = 1'b0; // pipelined or combinational adder tree
-  parameter logic [ $clog2(VECTOR_SIZE):0 ] PIPE_STAGE_MASK = {1'b1, { ($clog2(VECTOR_SIZE) ) {1'b1} }}; // register all but first few stages
+  parameter bit PIPED             = 1'b1; // pipelined or combinational adder tree
+  parameter logic [ $clog2(VECTOR_SIZE)- 1:0 ] PIPE_STAGE_MASK = {{ ($clog2(VECTOR_SIZE) ) {1'b1} }}; // register all but first few stages
   // --- I/O ---
   logic clk, rst_n, start;
   logic [VECTOR_SIZE-1:0] sigma;        // 1=add, 0=sub

@@ -1,7 +1,7 @@
 //License: KU Leuven
 module MatMul #(
     // Memory interface parameters
-    parameter int MEM_BANDWIDTH   = 4096/4,        // Memory bandwidth in bits per clock cycle
+    parameter int MEM_BANDWIDTH   = 4096,        // Memory bandwidth in bits per clock cycle
     // Matrix/Vector dimensions
     parameter int VECTOR_SIZE     = 256,         // Number of elements in sigma vector (configurable)
     parameter int J_ELEMENT_WIDTH = 4,           // Bit width of each J matrix element
@@ -18,8 +18,8 @@ module MatMul #(
     // Adder tree parameters
     parameter bit REG_FINAL         = 1'b1,
     parameter int LEVELS         = $clog2(VECTOR_SIZE), // number of levels in the adder tree
-    parameter logic [LEVELS:0] PIPE_STAGE_MASK = {1'b0, {LEVELS{1'b1}}}, //  pipelined stages
-    parameter bit PIPED             = 1'b0,
+    parameter logic [LEVELS-1:0] PIPE_STAGE_MASK = {{LEVELS-3{1'b1}},1'b1,1'b1,1'b1}, //  pipelined stages
+    parameter bit PIPED             = 1'b1,
     parameter int PIPE_DEPTH   = PIPED ? $countones(PIPE_STAGE_MASK) : 0 // pipelined or combinational adder tree
 ) (
     // Clock and reset
@@ -115,21 +115,69 @@ logic  sigma_needed [0:LANES-1];
     end
  end
 
-
+logic signed [INT_RESULT_WIDTH-1:0] lane_vals [0:LANES-1];
 generate
-  for (c = 0; c < LANES; c++) begin : GEN_ACCUMULATE
-adder_subtractor_unit #(
-    .WIDTH(ACC_WIDTH)
-) adder_subtractor_unit_inst (
-    .a(stage2_sum[c]),
-    .b({{(ACC_WIDTH-INT_RESULT_WIDTH){dot_outs[c][INT_RESULT_WIDTH-1]}}, dot_outs[c]}), // sign-extend dot_out
-    .sub(sigma_needed[c]), // 1=add, 0=sub
-    .y(stage2_sum[c+1])
-);
+  for (genvar li = 0; li < LANES; li++) begin : GEN_LANE_VALS
+    // sigma_needed==1 => add as-is, sigma_needed==0 => subtract
+    assign lane_vals[li] = sigma_needed[li] ? dot_outs[li]
+                                            : -dot_outs[li];
   end
- endgenerate
-  
-assign block_sum = stage2_sum[LANES];
+endgenerate
+
+// 2) Adder tree reduction across LANES
+localparam int RED_LEVELS  = $clog2(LANES);
+localparam int RED_OUT_W   = INT_RESULT_WIDTH + RED_LEVELS;
+
+// Level-0 inputs come from lane_vals
+logic signed [INT_RESULT_WIDTH-1:0] red_lvl0 [0:LANES-1];
+generate
+  for (genvar k = 0; k < LANES; k++) begin : GEN_LVL0_BIND
+    assign red_lvl0[k] = lane_vals[k];
+  end
+endgenerate
+logic signed [RED_OUT_W-1:0] block_sum_tree;
+// Instantiate layers; each layer halves the vector and widens by +1 bit
+generate
+  if (LANES == 1) begin : REDUCE_TRIVIAL
+    // No tree levels; just pass lane 0
+    assign block_sum_tree = red_lvl0[0];
+  end else begin : REDUCE_TREE
+  for (genvar l = 0; l < RED_LEVELS; l++) begin : REDUCE
+    localparam int W_IN      = INT_RESULT_WIDTH + l;
+    localparam int COUNT_IN  = (LANES >> l);
+    localparam int COUNT_OUT = (LANES >> (l+1));
+    localparam int W_OUT     = W_IN + 1;
+
+    logic signed [W_IN-1:0]  inputs_l  [0:COUNT_IN-1];
+    logic signed [W_OUT-1:0] outputs_l [0:COUNT_OUT-1];
+
+    if (l == 0) begin : BIND0
+      for (genvar m = 0; m < COUNT_IN; m++) begin
+        assign inputs_l[m] = red_lvl0[m];
+      end
+    end else begin : BINDN
+      for (genvar m = 0; m < COUNT_IN; m++) begin
+        assign inputs_l[m] = REDUCE[l-1].outputs_l[m];
+      end
+    end
+
+    adder_tree_layer_signed #(
+      .INPUTS_AMOUNT (COUNT_IN),
+      .DATAW         (W_IN)
+    ) u_reduce_l (
+      .inputs  (inputs_l),
+      .outputs (outputs_l)
+    );
+  end
+  assign block_sum_tree = REDUCE[RED_LEVELS-1].outputs_l[0];
+  end
+endgenerate
+
+// 3) Final reduced sum and block_sum with sign extension to ACC_WIDTH
+
+
+assign block_sum = {{(ACC_WIDTH-RED_OUT_W){block_sum_tree[RED_OUT_W-1]}},
+                    block_sum_tree};
 
 
 // Use start_enable_pulse to set start_enable
