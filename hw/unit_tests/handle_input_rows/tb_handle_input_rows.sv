@@ -587,4 +587,10 @@ module tb_handle_input_rows;
     $finish;
   end
 
+
+initial begin
+  $dumpfile("tb_handle_input_rows.vcd");
+  $dumpvars(0, tb_handle_input_rows);
+ 
+end
 endmodule
