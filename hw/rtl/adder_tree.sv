@@ -20,10 +20,12 @@ module adder_tree #(
   input  logic                            rst_n,
   input  logic signed [INPUT_WIDTH-1:0]   inputs [0:NUM_INPUTS-1],
   input  logic                            start,
-  input  logic                            final_flag_i, 
+  input  logic                            final_flag_i,
+  input  logic                            sigma_tag_i,
   output logic signed [OUTPUT_WIDTH-1:0]  sum_out,
   output logic                            start_out,
-  output logic                            final_flag_o
+  output logic                            final_flag_o,
+  output logic                            sigma_tag_o
 );
 
   // -------- Compile-time checks --------
@@ -44,19 +46,23 @@ module adder_tree #(
       logic signed [OUTPUT_WIDTH-1:0] sum_pre;
       logic                           start_pre;
       logic                           final_pre;
-      assign sum_pre   = {{(OUTPUT_WIDTH - INPUT_WIDTH){inputs[0][INPUT_WIDTH-1]}}, inputs[0]};
-      assign start_pre = start;
-      assign final_pre = final_flag_i;
+      logic                           sigma_tag_pre;
+      assign sum_pre       = {{(OUTPUT_WIDTH - INPUT_WIDTH){inputs[0][INPUT_WIDTH-1]}}, inputs[0]};
+      assign start_pre     = start;
+      assign final_pre     = final_flag_i;
+      assign sigma_tag_pre = sigma_tag_i;
 
       // Use PIPE_STAGE_MASK[0] to decide if output is registered
       if (PIPED && PIPE_STAGE_MASK[0]) begin : GEN_REG
-        `FF(sum_out,   sum_pre,   '0, clk, rst_n)
-        `FF(start_out, start_pre, '0, clk, rst_n)
-        `FF(final_flag_o, final_pre, '0, clk, rst_n)
+        `FF(sum_out,       sum_pre,       '0, clk, rst_n)
+        `FF(start_out,     start_pre,     '0, clk, rst_n)
+        `FF(final_flag_o,  final_pre,     '0, clk, rst_n)
+        `FF(sigma_tag_o, sigma_tag_pre, '0, clk, rst_n)
       end else begin : GEN_WIRE
-        assign sum_out   = sum_pre;
-        assign start_out = start_pre;
-        assign final_flag_o = final_pre;
+        assign sum_out       = sum_pre;
+        assign start_out     = start_pre;
+        assign final_flag_o  = final_pre;
+        assign sigma_tag_o = sigma_tag_pre;
       end
 
     end else begin : GEN_TREE
@@ -65,8 +71,10 @@ module adder_tree #(
       // Start signal pipeline array
       logic start_stage [0:LEVELS+1];
       logic final_stage_pipe [0:LEVELS+1];
+      logic sigma_tag_pipe [0:LEVELS+1];
       assign start_stage[0] = start;
       assign final_stage_pipe[0] = final_flag_i;
+      assign sigma_tag_pipe[0] = sigma_tag_i;
       // ======== COMBINATIONAL TREE (PIPED == 0) ========
       if (PIPED == 0) begin : GEN_COMB_TREE
 
@@ -101,9 +109,10 @@ module adder_tree #(
         end
 
         // Final output (combinational, no registers)
-        assign sum_out   = GEN_COMB_TREE.LAYER[LEVELS-1].out_i[0];
-        assign start_out = start;
-        assign final_flag_o = final_flag_i;
+        assign sum_out       = GEN_COMB_TREE.LAYER[LEVELS-1].out_i[0];
+        assign start_out     = start;
+        assign final_flag_o  = final_flag_i;
+        assign sigma_tag_o = sigma_tag_i;
       // ======== PIPELINED TREE (PIPED == 1) ========
       end else begin : GEN_PIPE_TREE
 
@@ -116,12 +125,14 @@ module adder_tree #(
           end
           `FF(start_stage[1], start_stage[0], '0, clk, rst_n)
           `FF(final_stage_pipe[1], final_stage_pipe[0], '0, clk, rst_n)
+          `FF(sigma_tag_pipe[1], sigma_tag_pipe[0], '0, clk, rst_n)
         end else begin : GEN_STAGE0_WIRE
           for (genvar m = 0; m < NUM_INPUTS; m++) begin : WIRE
             assign stage0_data[m] = inputs[m];
           end
           assign start_stage[1] = start_stage[0];
           assign final_stage_pipe[1] = final_stage_pipe[0];
+          assign sigma_tag_pipe[1] = sigma_tag_pipe[0];
         end
 
         // Tree layers with optional pipeline stages
@@ -163,19 +174,22 @@ module adder_tree #(
             end
             `FF(start_stage[i + 2], start_stage[i + 1], '0, clk, rst_n)
             `FF(final_stage_pipe[i + 2], final_stage_pipe[i + 1], '0, clk, rst_n)
+            `FF(sigma_tag_pipe[i + 2], sigma_tag_pipe[i + 1], '0, clk, rst_n)
           end else begin : WIRE_STAGE
             for (genvar n = 0; n < COUNT_OUT; n++) begin : WIRE
               assign stage_out[n] = out_i[n];
             end
             assign start_stage[i + 2] = start_stage[i + 1];
             assign final_stage_pipe[i + 2] = final_stage_pipe[i + 1];
+            assign sigma_tag_pipe[i + 2] = sigma_tag_pipe[i + 1];
           end
         end
 
         // Final output from last layer
-        assign sum_out   = GEN_PIPE_TREE.LAYER_PIPE[LEVELS-1].stage_out[0];
-        assign start_out = start_stage[LEVELS + 1];
-        assign final_flag_o = final_stage_pipe[LEVELS + 1];
+        assign sum_out       = GEN_PIPE_TREE.LAYER_PIPE[LEVELS-1].stage_out[0];
+        assign start_out     = start_stage[LEVELS + 1];
+        assign final_flag_o  = final_stage_pipe[LEVELS + 1];
+        assign sigma_tag_o = sigma_tag_pipe[LEVELS + 1];
       end // GEN_PIPE_TREE
 
     end // GEN_TREE

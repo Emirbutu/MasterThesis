@@ -5,8 +5,8 @@
 set HDL_PATH ../../rtl
 
 set HDL_FILES [ list \
-    "./tb_handle_input_rows.sv" \
-    "${HDL_PATH}/handle_input_rows.sv" \
+    "./tb_compute_unit.sv" \
+    "${HDL_PATH}/compute_unit.sv" \
     "${HDL_PATH}/full_adder.sv" \
     "${HDL_PATH}/generic_mux.sv" \
     "${HDL_PATH}/ripple_carry_adder.sv" \

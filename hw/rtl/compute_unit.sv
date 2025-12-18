@@ -11,25 +11,23 @@ module compute_unit #(
   // Width calculations
   parameter int MUX_DATA_WIDTH = DATA_WIDTH + 1,  // Extended by 1 bit for negation
   parameter int FIRST_TREE_OUTPUT_WIDTH = MUX_DATA_WIDTH + LEVELS_1,  // First tree output width
+  parameter int LEVELS_2         = (COL_PER_CC > 1) ? $clog2(COL_PER_CC) : 0,
   parameter int SECOND_TREE_OUTPUT_WIDTH = FIRST_TREE_OUTPUT_WIDTH + LEVELS_2,  // Second tree output width
   parameter int ACCUM_WIDTH = DATA_WIDTH + $clog2(VECTOR_SIZE * VECTOR_SIZE) + 1,  // Accumulator width: covers VECTOR_SIZE*VECTOR_SIZE*DATA_WIDTH + sign
   parameter bit PIPED_SECOND_TREE          = 1,      // Pipeline second adder tree
-  parameter int LEVELS_2         = (COL_PER_CC > 1) ? $clog2(COL_PER_CC) : 0,
   parameter logic [LEVELS_2:0] PIPE_STAGE_MASK_SECOND_TREE = '1
 )(
   // ========== Clock and Reset ==========
   input  logic clk,
   input  logic rst_n,
   // ========== Sigma Vectors ==========
-  // sigma_f: VECTOR_SIZE elements, each 1 bit
-  input  logic [VECTOR_SIZE-1:0] sigma_f,          //Showing the bits that are flipped with respect to previous sigma
-  // sigma_f_inv: VECTOR_SIZE elements, each 1 bit
-  input  logic [VECTOR_SIZE-1:0] sigma_f_inv,      //Showing the bits that are not flipped with respect to previous sigma
+  
   // sigma_new: VECTOR_SIZE elements, each 1 bit
-  input  logic [VECTOR_SIZE-1:0] sigma_new,
+  input logic sigma_c [0:COL_PER_CC-1],
+  input logic [1:0] sigma_r [0:VECTOR_SIZE-1],
   // ========== J Matrix Columns ==========
   // COL_PER_CC columns, each with VECTOR_SIZE elements of DATA_WIDTH bits
-  input  logic signed [DATA_WIDTH-1:0] j_cols [0:COL_PER_CC-1][0:VECTOR_SIZE-1],
+  input  logic unsigned [DATA_WIDTH-1:0] j_cols [0:COL_PER_CC-1][0:VECTOR_SIZE-1],
   // ========== Control Signals ==========
   input  logic [COL_PER_CC-1:0] valid_i,
   input  logic [COL_PER_CC-1:0] final_flag_i,
@@ -47,19 +45,19 @@ module compute_unit #(
     if (COL_PER_CC < 1)
       $fatal(1, "compute_unit: COL_PER_CC must be >= 1");
   end
-// ========== Internal Signals ==========
-logic [1:0] sigma_c [0:VECTOR_SIZE-1];
-// sigma_c_inverse: Result of sigma_new * sigma_f_inv (2-bit: 00=0, 01=+1, 11=-1)
-logic [1:0] sigma_r [0:VECTOR_SIZE-1];
 // MUX signals
-logic signed [MUX_DATA_WIDTH-1:0] mux_inputs [0:COL_PER_CC-1][0:VECTOR_SIZE-1][0:2];
-logic signed [MUX_DATA_WIDTH-1:0] mux_out [0:COL_PER_CC-1][0:VECTOR_SIZE-1];
+logic [MUX_DATA_WIDTH-1:0] mux_inputs [0:COL_PER_CC-1][0:VECTOR_SIZE-1][0:2];
+logic [MUX_DATA_WIDTH-1:0] mux_out [0:COL_PER_CC-1][0:VECTOR_SIZE-1];
 // First Adder tree signals
-logic signed [FIRST_TREE_OUTPUT_WIDTH-1:0] column_sums [0:COL_PER_CC-1];
-logic final_flag_piped [0:COL_PER_CC-1];
-logic done [0:COL_PER_CC-1];
+logic signed [FIRST_TREE_OUTPUT_WIDTH-1:0] dot_products [0:COL_PER_CC-1];
+logic [COL_PER_CC-1:0] sigma_tag_out;
+logic [COL_PER_CC-1:0] final_flag_piped;
+logic [COL_PER_CC-1:0] valid_int;
+// Sign selection MUX signals
+logic [FIRST_TREE_OUTPUT_WIDTH-1:0] sign_mux_inputs [0:COL_PER_CC-1][0:1];
+logic signed [FIRST_TREE_OUTPUT_WIDTH-1:0] dot_products_signed [0:COL_PER_CC-1];
 // Second Adder tree signals
-logic start_second_tree;
+logic valid_int_or;
 logic final_flag_second_tree_i;
 logic final_flag_second_tree_o;
 logic signed [SECOND_TREE_OUTPUT_WIDTH-1:0] final_sum;
@@ -69,24 +67,8 @@ logic signed [ACCUM_WIDTH-1:0] accum_q;
 logic signed [ACCUM_WIDTH-1:0] accum_d;
 logic accum_load;
 logic final_flag_delayed;
-// ========== Generate sigma_c ==========
-generate
-  for (genvar i = 0; i < VECTOR_SIZE; i++) begin : GEN_SIGMA_C
-    assign sigma_c[i] = sigma_f[i] ? (sigma_new[i] ? 2'b01 : 2'b10) : 2'b00; // It means that if sigma_f is 1, then sigma_c is +1(2'b01)
-                                                                             // or -1(2'b10) based on sigma_new, else 0
-  
-  end : GEN_SIGMA_C
-endgenerate
-// ========== Generate sigma_c_inverse ==========
-generate
-  for (genvar i = 0; i < VECTOR_SIZE; i++) begin : GEN_SIGMA_R
-    assign sigma_r[i] = sigma_f_inv[i] ? (sigma_new[i] ? 2'b01 : 2'b10) : 2'b00;// It means that if sigma_f_inv is 1, then sigma_c is +1(2'b01) 
-                                                                                // or -1(2'b10) based on sigma_new, else 0
-  end : GEN_SIGMA_R
-endgenerate
 // ========== Generate MUXes for J column selection ==========
-logic signed [MUX_DATA_WIDTH-1:0] mux_out_pre [0:COL_PER_CC-1][0:VECTOR_SIZE-1];
-
+logic [MUX_DATA_WIDTH-1:0] mux_out_pre [0:COL_PER_CC-1][0:VECTOR_SIZE-1];
 generate
   for (genvar col = 0; col < COL_PER_CC; col++) begin : GEN_COL
     for (genvar row = 0; row < VECTOR_SIZE; row++) begin : GEN_ROW
@@ -102,7 +84,7 @@ generate
         .DATA_WIDTH (MUX_DATA_WIDTH)
       ) u_mux (
         .inputs (mux_inputs[col][row]),
-        .sel    (sigma_c[row]),
+        .sel    (sigma_r[row]),
         .out    (mux_out_pre[col][row])
       );
       
@@ -130,22 +112,45 @@ endgenerate
         .NUM_INPUTS      (VECTOR_SIZE),
         .INPUT_WIDTH     (MUX_DATA_WIDTH),
         .LEVELS          (LEVELS_1),
-        .PIPE_STAGE_MASK (PIPE_STAGE_MASK_FIRST_TREE),
+        .PIPE_STAGE_MASK (PIPE_STAGE_MASK_FIRST_TREE)
       ) u_adder_tree (
-        .clk       (clk),
-        .rst_n     (rst_n),
-        .inputs    (adder_inputs),
-        .start     (valid_i[col]),
+        .clk          (clk),
+        .rst_n        (rst_n),
+        .inputs       (adder_inputs),
+        .start        (valid_i[col]),
         .final_flag_i (final_flag_i[col]),
-        .sum_out   (column_sums[col]),
-        .start_out (done[col]),
-        .final_flag_o (final_flag_piped[col])
+        .sigma_tag_i  (sigma_c[col]),
+        .sum_out      (dot_products[col]),
+        .start_out    (valid_int[col]),
+        .final_flag_o (final_flag_piped[col]),
+        .sigma_tag_o  (sigma_tag_out[col])
       );
       
     end : GEN_ADDER_TREE
   endgenerate
-// ========== OR the done and final_flag signals to create start for second tree ==========
-assign start_second_tree = |done;
+
+// ========== Sign Selection MUXes (multiply by sigma_tag) ==========
+// If sigma_tag = 1: keep dot_product, if sigma_tag = 0: negate dot_product
+generate
+  for (genvar col = 0; col < COL_PER_CC; col++) begin : GEN_SIGN_MUX
+    // MUX inputs: [0] = -dot_product, [1] = +dot_product
+    assign sign_mux_inputs[col][0] = -dot_products[col];
+    assign sign_mux_inputs[col][1] = dot_products[col];
+    
+    // Instantiate 2-input MUX
+    generic_mux #(
+      .NUM_INPUTS (2),
+      .DATA_WIDTH (FIRST_TREE_OUTPUT_WIDTH)
+    ) u_sign_mux (
+      .inputs (sign_mux_inputs[col]),
+      .sel    (sigma_tag_out[col]),
+      .out    (dot_products_signed[col])
+    );
+  end : GEN_SIGN_MUX
+endgenerate
+
+// ========== OR the valid_int and final_flag signals to create start for second tree ==========
+assign valid_int_or = |valid_int;
 assign final_flag_second_tree_i = |final_flag_piped;
 // ========== Second Level Adder Tree (sum all columns) ==========
 adder_tree #(
@@ -158,12 +163,14 @@ adder_tree #(
 ) u_final_adder_tree (
   .clk       (clk),
   .rst_n     (rst_n),
-  .inputs    (column_sums),
-  .start     (start_second_tree),
+  .inputs    (dot_products_signed),
+  .start     (valid_int_or),
   .final_flag_i (final_flag_second_tree_i),
-  .sum_out   (final_sum),
-  .start_out (acc_flag),
-  .final_flag_o (final_flag_second_tree_o)
+  .sigma_tag_i  (1'b0),  // Not used in second tree
+  .sum_out      (final_sum),
+  .start_out    (acc_flag),
+  .final_flag_o (final_flag_second_tree_o),
+  .sigma_tag_o  ()  // Not used
 );
 
 // ========== Accumulator Register with Adder ==========
