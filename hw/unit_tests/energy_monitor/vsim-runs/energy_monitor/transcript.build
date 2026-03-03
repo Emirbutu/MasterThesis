@@ -1,0 +1,156 @@
+# source /volume1/users/r1024900/lagd-im/target/sim/vsim/build.tcl
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:03 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ./tb_energy_monitor.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Skipping module tb_energy_monitor
+# 
+# Top level modules:
+# 	tb_energy_monitor
+# End time: 15:35:03 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:03 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/energy_monitor.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module energy_monitor
+# 
+# Top level modules:
+# 	energy_monitor
+# End time: 15:35:03 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:03 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/lib/bp_pipe.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module bp_pipe
+# 
+# Top level modules:
+# 	bp_pipe
+# End time: 15:35:03 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:03 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/vector_caching.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module vector_caching
+# 
+# Top level modules:
+# 	vector_caching
+# End time: 15:35:03 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:03 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/step_counter.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module step_counter
+# 
+# Top level modules:
+# 	step_counter
+# End time: 15:35:03 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:03 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/logic_ctrl.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module logic_ctrl
+# 
+# Top level modules:
+# 	logic_ctrl
+# End time: 15:35:03 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:03 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/partial_energy_calc.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module partial_energy_calc
+# 
+# Top level modules:
+# 	partial_energy_calc
+# End time: 15:35:03 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:03 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/adder_tree.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module adder_tree
+# 
+# Top level modules:
+# 	adder_tree
+# End time: 15:35:04 on Mar 02,2026, Elapsed time: 0:00:01
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:04 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/accumulator.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module accumulator
+# 
+# Top level modules:
+# 	accumulator
+# End time: 15:35:04 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:04 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/find_max.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# ** Warning: ../../rtl/energy_monitor/find_max.sv(31): (vlog-13314) Defaulting port 'data_i' kind to 'var' rather than 'wire' due to default compile option setting of -svinputport=relaxed.
+# -- Compiling module find_max
+# 
+# Top level modules:
+# 	find_max
+# End time: 15:35:04 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 1
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:04 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/spin_flip_detector.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module spin_flip_detector
+# 
+# Top level modules:
+# 	spin_flip_detector
+# End time: 15:35:04 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:04 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/adder_tree_unsigned.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module adder_tree_unsigned
+# 
+# Top level modules:
+# 	adder_tree_unsigned
+# End time: 15:35:04 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:04 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/find_all_ones_iterative.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module find_all_ones_iterative
+# 
+# Top level modules:
+# 	find_all_ones_iterative
+# End time: 15:35:04 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:04 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/lzc.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module lzc
+# 
+# Top level modules:
+# 	lzc
+# End time: 15:35:04 on Mar 02,2026, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 15:35:04 on Mar 02,2026
+# vlog -incr -sv -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor "+define+DBG=1" "+define+VCD_FILE="/volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/tb_energy_monitor.vcd"" "+incdir+/volume1/users/r1024900/lagd-im/.bender/git/checkouts/common_cells-08bbccfb95b81332/include" ../../rtl/energy_monitor/VX_find_first.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module VX_find_first
+# 
+# Top level modules:
+# 	VX_find_first
+# End time: 15:35:05 on Mar 02,2026, Elapsed time: 0:00:01
+# Errors: 0, Warnings: 0
+# ** Warning: (vopt-10587) Some optimizations are turned off because the +acc switch is in effect. This will cause your simulation to run slowly. Please use -access/-debug to maintain needed visibility. The +acc switch would be deprecated in a future release.
+# ** Note: (vopt-220) 'modelsim.ini' is used as the ini file.
+# ** Warning: ./tb_energy_monitor.sv(800): (vopt-2685) [TFMPC] - Too few port connections for 'dut'.  Expected 21, found 20.
+# ** Warning: ./tb_energy_monitor.sv(800): (vopt-2718) [TFMPC] - Missing connection for port 'weight_raddr_em_o'.

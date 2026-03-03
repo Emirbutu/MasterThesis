@@ -1,0 +1,22 @@
+# source /users/students/r1024900/lagd-im/target/sim/vsim/build.tcl
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 02:38:51 on Dec 24,2025
+# vlog -incr -sv -work /users/students/r1024900/lagd-im/hw/unit_tests/adder/vsim-runs/adder/work/work_adder ./tb_adder.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Compiling module tb_adder
+# 
+# Top level modules:
+# 	tb_adder
+# End time: 02:38:51 on Dec 24,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# QuestaSim vlog 2025.2 Compiler 2025.05 May 31 2025
+# Start time: 02:38:51 on Dec 24,2025
+# vlog -incr -sv -work /users/students/r1024900/lagd-im/hw/unit_tests/adder/vsim-runs/adder/work/work_adder ../../rtl/lib/adder.sv 
+# ** Note: (vlog-220) 'modelsim.ini' is used as the ini file.
+# -- Skipping module adder
+# 
+# Top level modules:
+# 	adder
+# End time: 02:38:51 on Dec 24,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0
+# ** Note: (vopt-220) 'modelsim.ini' is used as the ini file.

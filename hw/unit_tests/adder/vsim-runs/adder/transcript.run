@@ -1,0 +1,40 @@
+# source /users/students/r1024900/lagd-im/target/sim/vsim/sim-run.tcl
+# ** Note: (vsim-220) '/esat/micas-data/software/Mentor/questasim_2025.2/linux/../modelsim.ini' is used as the ini file.
+# vsim -quiet -wlf /users/students/r1024900/lagd-im/hw/unit_tests/adder/vsim-runs/adder/work/adder.wlf -msgmode both -displaymsgmode both -L work_lib -work /users/students/r1024900/lagd-im/hw/unit_tests/adder/vsim-runs/adder/work/work_adder -ini /users/students/r1024900/lagd-im/hw/unit_tests/adder/vsim-runs/adder/modelsim.ini nodbg_adder 
+# Start time: 02:38:53 on Dec 24,2025
+# //  Questa Sim
+# //  Version 2025.2 linux May 31 2025
+# //
+# // Unpublished work. Copyright 2025 Siemens
+# //
+# // This material contains trade secrets or otherwise confidential information
+# // owned by Siemens Industry Software Inc. or its affiliates (collectively,
+# // "SISW"), or its licensors. Access to and use of this information is strictly
+# // limited as set forth in the Customer's applicable agreements with SISW.
+# //
+# // This material may not be copied, distributed, or otherwise disclosed outside
+# // of the Customer's facilities without the express written permission of SISW,
+# // and may not be used in any way not expressly authorized by SISW.
+# //
+# spin_cached = 10110100
+# 
+# counter=0 part=1011 loop=1101
+# 
+# counter=1 part=0110 loop=0110
+# 
+# counter=2 part=1101 loop=1011
+# 
+# counter=3 part=1010 loop=0101
+# 
+# counter=4 part=0100 loop=0010
+# 
+# counter=5 part=100x loop=x001
+# 
+# counter=6 part=00xx loop=xx00
+# 
+# counter=7 part=0xxx loop=xxx0
+# 
+# ** Note: $finish    : ./tb_adder.sv(23)
+#    Time: 0 ns  Iteration: 16  Instance: /tb_adder
+# End time: 02:38:53 on Dec 24,2025, Elapsed time: 0:00:00
+# Errors: 0, Warnings: 0

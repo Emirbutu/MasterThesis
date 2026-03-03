@@ -1,0 +1,34 @@
+# source /volume1/users/r1024900/lagd-im/target/sim/vsim/sim-run.tcl
+# ** Note: (vsim-220) '/esat/micas-data/software/Mentor/questasim_2025.2/linux/../modelsim.ini' is used as the ini file.
+# vsim -quiet -wlf /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/energy_monitor.wlf -voptargs="+acc" -msgmode both -displaymsgmode both -L work_lib -work /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/work/work_energy_monitor -ini /volume1/users/r1024900/lagd-im/hw/unit_tests/energy_monitor/vsim-runs/energy_monitor/modelsim.ini dbg_energy_monitor 
+# Start time: 15:35:09 on Mar 02,2026
+# //  Questa Sim
+# //  Version 2025.2 linux May 31 2025
+# //
+# // Unpublished work. Copyright 2025 Siemens
+# //
+# // This material contains trade secrets or otherwise confidential information
+# // owned by Siemens Industry Software Inc. or its affiliates (collectively,
+# // "SISW"), or its licensors. Access to and use of this information is strictly
+# // limited as set forth in the Customer's applicable agreements with SISW.
+# //
+# // This material may not be copied, distributed, or otherwise disclosed outside
+# // of the Customer's facilities without the express written permission of SISW,
+# // and may not be used in any way not expressly authorized by SISW.
+# //
+# Starting energy monitor testbench. Total cases: 'd100. Test mode: 'b110, Little endian: 0
+# Debug mode enabled. Generating VCD waveform.
+# Time: 177 ns, Testcase [1] Energy match: 'd-1054
+# Time: 179 ns, Testcase [1] Energy match: 'd-1054
+# Time: 311 ns, Testcase [2] Energy match: 'd697
+# Time: 313 ns, Testcase [2] Energy match: 'd697
+# Time: 445 ns, Testcase [3] Energy match: 'd117
+# Time: 447 ns, Testcase [3] Energy match: 'd117
+# Time: 579 ns, Testcase [4] Energy match: 'd670
+# Time: 581 ns, Testcase [4] Energy match: 'd670
+# ** Fatal: Testbench timeout reached. Ending simulation.
+#    Time: 600 ns  Scope: tb_energy_monitor File: ./tb_energy_monitor.sv Line: 862
+# ** Note: $finish    : ./tb_energy_monitor.sv(862)
+#    Time: 600 ns  Iteration: 0  Instance: /tb_energy_monitor
+# End time: 15:35:20 on Mar 02,2026, Elapsed time: 0:00:11
+# Errors: 1, Warnings: 0
