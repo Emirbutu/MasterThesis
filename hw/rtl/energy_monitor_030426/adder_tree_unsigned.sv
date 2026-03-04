@@ -14,9 +14,9 @@
 // -OUT_WIDTH: bit width of the output
 // -IN_WIDTH: total input width
 
-`include "../include/registers.svh"
+`include "common_cells/registers.svh"
 
-module adder_tree #(
+module adder_tree_unsigned #(
     parameter int N = 256,
     parameter int DATAW = 8,
     parameter int PIPES = 0,
@@ -28,18 +28,25 @@ module adder_tree #(
     input logic en_i,
     input logic data_valid_i,
     input logic [IN_WIDTH-1:0] data_i,
-    output logic signed [OUT_WIDTH-1:0] sum_o
+    output logic unsigned [OUT_WIDTH-1:0] sum_o,
+    output logic data_valid_o
 );
     localparam int STAGES = $clog2(N); // number of stages
     logic signed [STAGES:0][N-1:0][DATAW+$clog2(N)-1:0] stage_data; // data at each stage
+    logic data_valid_q;
 
     // Generate variables
     genvar i, j;
+    /*
+    Sample input valid signal,since spin_flipped is generated at the end of 
+    spin_handshake (when it goes from 1 to 0),
+    we need to register data_valid_i to align with the adder tree latency */
+    `FF(data_valid_q, data_valid_i, 1'b0, clk_i, rst_ni)
 
     // Assign input data to stage 0
     generate
         for (i = 0; i < N; i++) begin : gen_input_unpack
-            assign stage_data[0][i] = $signed(data_i[i*DATAW +: DATAW]);
+            assign stage_data[0][i] = $unsigned(data_i[i*DATAW +: DATAW]);
         end
     endgenerate
 
@@ -52,6 +59,7 @@ module adder_tree #(
         end
     endgenerate
 
+
     // Sum pipeline registers
     bp_pipe #(
         .DATAW(OUT_WIDTH),
@@ -61,8 +69,8 @@ module adder_tree #(
         .rst_ni(rst_ni),
         .data_i(stage_data[STAGES][0]),
         .data_o(sum_o),
-        .valid_i(data_valid_i),
-        .valid_o(),
+        .valid_i(data_valid_q),
+        .valid_o(data_valid_o),
         .ready_i(1'b1),
         .ready_o()
     );

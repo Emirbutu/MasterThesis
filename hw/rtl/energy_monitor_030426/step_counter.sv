@@ -25,8 +25,7 @@
 // Case tested:
 // - None
 
-
-`include "../include/registers.svh"
+`include "common_cells/registers.svh"
 
 module step_counter #(
     parameter int COUNTER_BITWIDTH = $clog2(256),

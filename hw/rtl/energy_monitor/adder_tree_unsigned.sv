@@ -14,7 +14,7 @@
 // -OUT_WIDTH: bit width of the output
 // -IN_WIDTH: total input width
 
-`include "common_cells/registers.svh"
+`include "../include/registers.svh"
 
 module adder_tree_unsigned #(
     parameter int N = 256,

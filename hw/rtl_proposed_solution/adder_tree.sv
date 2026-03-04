@@ -1,4 +1,4 @@
-`include "include/registers.svh"
+`include "../include/registers.svh"
 
 // adder_tree.sv
 // Configurable adder tree: fully pipelined or fully combinational.

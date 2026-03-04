@@ -26,7 +26,7 @@
 // - energy_ready_i: input energy ready signal
 // - debug_en_i: debug step signal
 
-`include "../include/registers.svh"
+`include "common_cells/registers.svh"
 
 module logic_ctrl #(
     parameter int PIPESMID = 1
@@ -34,7 +34,6 @@ module logic_ctrl #(
     input logic clk_i,
     input logic rst_ni,
     input logic en_i,
-    input logic standart_mode_i,
 
     input logic config_valid_i,
     output logic config_ready_o,
@@ -60,18 +59,14 @@ module logic_ctrl #(
     } state_t;
     state_t current_state, next_state;
 
-    logic spin_handshake;
     logic weight_handshake;
     logic energy_valid_comb;
     logic energy_valid_reg;
     logic energy_handshake;
     logic [PIPESMID:0] counter_ready_pipe;
-    logic [2:0] spin_handshake_pipe;
 
     assign weight_handshake = weight_valid_i && weight_ready_o;
     assign energy_handshake = energy_valid_o && energy_ready_i;
-    assign spin_handshake   = spin_valid_i && spin_ready_o;
-
 
     assign config_ready_o = (current_state == IDLE) && !debug_en_i;
     assign spin_ready_o = (current_state == IDLE) && !debug_en_i && (!config_valid_i);
@@ -80,18 +75,10 @@ module logic_ctrl #(
 
     // Pipeline counter_ready_i signal
     assign counter_ready_pipe[0] = counter_ready_i;
-    assign spin_handshake_pipe[0] = spin_handshake;
     generate
         genvar i;
         for (i = 0; i < PIPESMID; i++) begin : gen_counter_ready_pipe_loop
             `FFL(counter_ready_pipe[i+1], counter_ready_pipe[i], en_i, 1'b0, clk_i, rst_ni);
-        end
-    endgenerate
-
-     generate
-        genvar j;
-        for (j = 0; j < 3; j++) begin : gen_spin_ready_pipe_loop
-            `FFL(spin_handshake_pipe[j+1], spin_handshake_pipe[j], en_i, 1'b0, clk_i, rst_ni);
         end
     endgenerate
 
@@ -107,7 +94,7 @@ module logic_ctrl #(
                 if (debug_en_i)
                     next_state = IDLE; // stay in IDLE in debug mode
                 else begin
-                    if ((!standart_mode_i) ? (spin_handshake_pipe[2]) : (spin_handshake))
+                    if (spin_valid_i && spin_ready_o)
                         next_state = COMPUTE;
                 end
             end
