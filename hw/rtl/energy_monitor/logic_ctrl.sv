@@ -26,6 +26,8 @@
 // - energy_ready_i: input energy ready signal
 // - debug_en_i: debug step signal
 
+
+//Buraya state ekle previous energyi accumulate etmek icin, orda baya siknitilar oluyo
 `include "../include/registers.svh"
 
 module logic_ctrl #(
@@ -34,7 +36,9 @@ module logic_ctrl #(
     input logic clk_i,
     input logic rst_ni,
     input logic en_i,
-    input logic standart_mode_i,
+    input logic standard_mode_i,
+    input logic first_operation_sampled_i,
+    input logic max_flipped_count_valid,
 
     input logic config_valid_i,
     output logic config_ready_o,
@@ -54,9 +58,10 @@ module logic_ctrl #(
     input logic debug_en_i
 );
     // State enumeration
-    typedef enum logic {
-        IDLE = 1'b0,
-        COMPUTE = 1'b1
+    typedef enum logic [1:0] {
+        IDLE = 2'b00,
+        COMPUTE_STANDARD = 2'b01,
+        COMPUTE_NONSTANDARD = 2'b10
     } state_t;
     state_t current_state, next_state;
 
@@ -75,8 +80,8 @@ module logic_ctrl #(
 
     assign config_ready_o = (current_state == IDLE) && !debug_en_i;
     assign spin_ready_o = (current_state == IDLE) && !debug_en_i && (!config_valid_i);
-    assign weight_ready_o = (current_state == COMPUTE) && (!counter_ready_i) && (!debug_en_i);
-    assign energy_valid_comb = (current_state == COMPUTE) && counter_ready_pipe[PIPESMID] && cmpt_done_i;
+    assign weight_ready_o = ((current_state == COMPUTE_STANDARD) || (current_state == COMPUTE_NONSTANDARD)) && (!counter_ready_i) && (!debug_en_i);
+    assign energy_valid_comb = ((current_state == COMPUTE_STANDARD) || (current_state == COMPUTE_NONSTANDARD)) && counter_ready_pipe[PIPESMID] && cmpt_done_i;
 
     // Pipeline counter_ready_i signal
     assign counter_ready_pipe[0] = counter_ready_i;
@@ -107,18 +112,30 @@ module logic_ctrl #(
                 if (debug_en_i)
                     next_state = IDLE; // stay in IDLE in debug mode
                 else begin
-                    if ((!standart_mode_i) ? (spin_handshake_pipe[2]) : (spin_handshake))
-                        next_state = COMPUTE;
+                    if ((standard_mode_i || first_operation_sampled_i) && spin_handshake)
+                        next_state = COMPUTE_STANDARD;
+                    else if (!standard_mode_i && !first_operation_sampled_i && max_flipped_count_valid)
+                        next_state = COMPUTE_NONSTANDARD;
                 end
             end
-            COMPUTE: begin
+            COMPUTE_STANDARD: begin
                 if (debug_en_i)
-                    next_state = COMPUTE; // stay in COMPUTE in debug mode
+                    next_state = COMPUTE_STANDARD; // stay in COMPUTE_STANDARD in debug mode
                 else begin
                     if (energy_handshake)
                         next_state = IDLE;
                     else
-                        next_state = COMPUTE;
+                        next_state = COMPUTE_STANDARD;
+                end
+            end
+            COMPUTE_NONSTANDARD: begin
+                if (debug_en_i)
+                    next_state = COMPUTE_NONSTANDARD; // stay in COMPUTE_NONSTANDARD in debug mode
+                else begin
+                    if (energy_handshake)
+                        next_state = IDLE;
+                    else
+                        next_state = COMPUTE_NONSTANDARD;
                 end
             end
             default: begin

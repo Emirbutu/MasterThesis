@@ -105,7 +105,7 @@ module tb_energy_monitor;
     logic en_i;
     logic config_valid_i;
     // Additional signals after modification for differential testing
-    logic standart_mode_i;
+    logic standard_mode_i;
     logic first_operation_i;
     logic [ $clog2(DATASPIN)-1 : 0 ] config_counter_i;
     logic config_ready_o;
@@ -198,10 +198,12 @@ module tb_energy_monitor;
         .counter_spin_o(counter_spin_o),
         .energy_valid_o(energy_valid_o),
         .energy_ready_i(energy_ready_i),
-        .standart_mode_i(standart_mode_i),
+        .standard_mode_i(standard_mode_i),
         .first_operation_i(first_operation_i),
         .energy_o(energy_o)
     );
+
+
 
     // ========================================================================
     // Debug registers for monitoring logic_ctrl internal signals
@@ -259,7 +261,7 @@ module tb_energy_monitor;
         en_i = 0;
         config_valid_i = 0;
         config_counter_i = 'd0;
-        standart_mode_i = 1;
+        standard_mode_i = 1;
         first_operation_i = 0; 
         #(10 * CLKCYCLE);
         first_operation_i = 1; 
@@ -722,7 +724,7 @@ endmodule
     logic en_i;
     logic config_valid_i;
     // Additional signals after modification for differential testing
-    logic standart_mode_i;
+    logic standard_mode_i;
     logic first_operation_i;
     logic [ $clog2(DATASPIN)-1 : 0 ] config_counter_i;
     logic config_ready_o;
@@ -815,11 +817,53 @@ endmodule
         .counter_spin_o(counter_spin_o),
         .energy_valid_o(energy_valid_o),
         .energy_ready_i(energy_ready_i),
-        .standart_mode_i(standart_mode_i),
+        .standard_mode_i(standard_mode_i),
         .first_operation_i(first_operation_i),
         .energy_o(energy_o)
     );
+        // ========================================================================
+    // Debug mirrors for DUT internal unpacked arrays (waveform visibility)
+    // ========================================================================
+    logic signed [BITH-1:0] tb_hbias_pipe_array [0:`PARALLELISM-1];
+    logic [SCALING_BIT-1:0] tb_hscaling_pipe_array [0:`PARALLELISM-1];
+    logic signed [BITJ-1:0] tb_weight_i_array [0:`PARALLELISM-1][0:DATASPIN-1];
+    logic signed [BITJ-1:0] tb_weight_pipe_array [0:`PARALLELISM-1][0:DATASPIN-1];
+    logic signed [BITJ-1:0] tb_weight_i_masked_array [0:`PARALLELISM-1][0:DATASPIN-1];
+    logic signed [BITJ-1:0] tb_weight_masked_array [0:`PARALLELISM-1][0:DATASPIN-1];
+    logic signed [BITJ-1:0] tb_weight_selected_array [0:`PARALLELISM-1][0:DATASPIN-1];
 
+    generate
+        for (genvar i_dbg = 0; i_dbg < `PARALLELISM; i_dbg++) begin : gen_dbg_unpack_arrays
+            assign tb_hbias_pipe_array[i_dbg] = dut.hbias_pipe_array[i_dbg];
+            assign tb_hscaling_pipe_array[i_dbg] = dut.hscaling_pipe_array[i_dbg];
+            for (genvar j_dbg = 0; j_dbg < DATASPIN; j_dbg++) begin : gen_dbg_unpack_per_spin
+                assign tb_weight_i_array[i_dbg][j_dbg] = dut.weight_i_array[i_dbg][j_dbg];
+                assign tb_weight_pipe_array[i_dbg][j_dbg] = dut.weight_pipe_array[i_dbg][j_dbg];
+                assign tb_weight_i_masked_array[i_dbg][j_dbg] = dut.weight_i_masked_array[i_dbg][j_dbg];
+                assign tb_weight_masked_array[i_dbg][j_dbg] = dut.weight_masked_array[i_dbg][j_dbg];
+                assign tb_weight_selected_array[i_dbg][j_dbg] = dut.weight_selected_array[i_dbg][j_dbg];
+            end
+        end
+    endgenerate
+    // ========================================================================
+    // Per-element scalar probes (one signal per J element) — uncommented view
+    // Creates hierarchical signals: tb_energy_monitor.tb_unit[i].tb_elem[j].tb_w_selected
+    // ========================================================================
+    generate
+        for (genvar i_unit = 0; i_unit < PARALLELISM; i_unit++) begin : tb_unit
+            for (genvar j_el = 0; j_el < DATASPIN; j_el++) begin : tb_elem
+                logic signed [BITJ-1:0] tb_w_selected;
+                logic signed [BITJ-1:0] tb_w_masked;
+                logic signed [BITJ-1:0] tb_w_pipe;
+                logic signed [BITJ-1:0] tb_w_i;
+
+                assign tb_w_selected = dut.weight_selected_array[i_unit][j_el];
+                assign tb_w_masked   = dut.weight_masked_array[i_unit][j_el];
+                assign tb_w_pipe     = dut.weight_pipe_array[i_unit][j_el];
+                assign tb_w_i        = dut.weight_i_array[i_unit][j_el];
+            end
+        end
+    endgenerate
     // Clock generation
     initial begin
         clk_i = 0;
@@ -837,8 +881,8 @@ endmodule
         en_i = 0;
         config_valid_i = 0;
         config_counter_i = 'd0;
-        standart_mode_i = 1;
-        first_operation_i = 0; 
+        standard_mode_i = 0;
+        first_operation_i = 1; 
         #(10 * CLKCYCLE);
         first_operation_i = 1; 
         en_i = 1;
@@ -858,7 +902,7 @@ endmodule
             $display("Debug mode enabled. Generating VCD waveform.");
             $dumpfile(`VCD_FILE);
             $dumpvars(2, tb_energy_monitor);
-            #(300 * CLKCYCLE); // To avoid generating too large VCD files
+            #(200 * CLKCYCLE); // To avoid generating too large VCD files
             $fatal(1, "Testbench timeout reached. Ending simulation.");
         end
         else begin
