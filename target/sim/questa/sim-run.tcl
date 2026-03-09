@@ -42,10 +42,14 @@ vmap
 vsim -quiet \
     -wlf work/${SIM_NAME}.wlf \
     -msgmode both -displaymsgmode both \
-    -L work_lib \
     -work ${WLIB} \
     -ini ./modelsim.ini \
     ${OBJ}
+
+if { ${DBG} == 1 } {
+    # Save all signals in vcd
+    log -r /*
+}
 
 run -all
 quit
