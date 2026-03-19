@@ -1,14 +1,5 @@
-// Copyright 2025 KU Leuven.
-// Licensed under the Apache License, Version 2.0, see LICENSE for details.
-// SPDX-License-Identifier: Apache-2.0
-
-// Author: Jiacong Sun <jiacong.sun@kuleuven.be>
-//
-// Module description:
-// Energy monitor Testbench.
 
 `timescale 1ns / 1ps
-
 `ifndef DBG
 `define DBG 0
 `endif
@@ -24,6 +15,8 @@
 `define MaxPosValue_TEST 'b100 // spins: +1, weights: max positive, hbias: max positive, hscaling: max positive
 `define MaxNegValue_TEST 'b101 // spins: -1, weights: max negative, hbias: max negative, hscaling: max positive
 `define RANDOM_TEST 'b110
+`define HALF_SPLIT_ALT_TEST 'b111 // spins alternate per iteration: [first half=1, second half=0] then [first half=0, second half=1]
+`define SPARSE_FLIP_TEST 'd8 // start from a base vector and toggle only a few bits per test iteration
 
 `define True 1'b1
 `define False 1'b0
@@ -32,16 +25,32 @@
 `define test_mode `RANDOM_TEST
 `endif
 
+`ifndef SPARSE_FLIP_BASE // number of bit flips in the first sparse iteration
+`define SPARSE_FLIP_BASE 2
+`endif
+
+`ifndef SPARSE_FLIP_LEVELS // cycles flips as BASE x [1..LEVELS] => e.g. 10,20,30
+`define SPARSE_FLIP_LEVELS 1
+`endif
+
 `ifndef NUM_TESTS // number of test cases
-`define NUM_TESTS 1
+`define NUM_TESTS 100000
 `endif
 
 `ifndef PIPESINTF // number of pipeline stages at the input interface
-`define PIPESINTF 1
+`define PIPESINTF 0
 `endif
 
 `ifndef PIPESMID // number of pipeline stages at mid adder tree
 `define PIPESMID 1
+`endif
+
+`ifndef SRAM_READ_COMB // 1: combinational read, 0: posedge read
+`define SRAM_READ_COMB 1
+`endif
+
+`ifndef SRAM_RD_LATENCY // valid only when SRAM_READ_COMB=0
+`define SRAM_RD_LATENCY 0
 `endif
 
 module tb_energy_monitor;
@@ -53,7 +62,8 @@ module tb_energy_monitor;
 
     // Testbench parameters
     localparam int CLKCYCLE = 2; // clock cycle in ns
-    localparam int MEM_LATENCY = 0; // latency of memories in cycles
+    localparam int MEM_LATENCY = `SRAM_RD_LATENCY; // latency of memories in cycles (sync mode)
+    localparam bit MEM_READ_COMB = `SRAM_READ_COMB;
     localparam int SPIN_LATENCY = 10; // latency of spin input in cycles
     localparam int MEM_LATENCY_RANDOM = `False;
     localparam int SPIN_LATENCY_RANDOM = `False;
@@ -67,8 +77,17 @@ module tb_energy_monitor;
     localparam int LOCAL_ENERGY_BIT = $clog2(DATASPIN) + BITH + SCALING_BIT - 1; // bit width of local energy
     localparam int ENERGY_TOTAL_BIT = 32; // bit width of total energy
     localparam int LITTLE_ENDIAN = `True; // endianness of spin and weight storage
+    // SRAM parameters
+    localparam int SRAM_DEPTH = 64;
+    localparam int SRAM_DWIDTH = 1024;
+    localparam int SRAM_AWIDTH = $clog2(SRAM_DEPTH);
+    localparam int SRAM_DWIDTHB = SRAM_DWIDTH / 8;
 
     // Testbench internal signals
+    // Utility tasks, reference checker variables, and functions.
+    // Included here (after localparams) so that all identifiers are in scope.
+  
+
     logic clk_i;
     logic rst_ni;
     logic en_i;
@@ -90,73 +109,18 @@ module tb_energy_monitor;
     logic energy_ready_i;
     logic signed [ENERGY_TOTAL_BIT-1:0] energy_o;
     logic [$clog2(DATASPIN)-1:0] counter_spin_o;
-    // Addresses from DUT for each parallel bank
-    wire [PARALLELISM-1:0][$clog2(DATASPIN / PARALLELISM)-1:0] weight_raddr_em_o;
+    wire  [PARALLELISM-1:0][$clog2(DATASPIN/PARALLELISM)-1:0] weight_raddr_em_o;
 
-    logic unsigned [31:0] spin_reg_valid_int;
-    logic [`NUM_TESTS-1:0] spin_reg_valid;
-    logic [DATASPIN-1:0] spin_reg [0:`NUM_TESTS-1];
-    logic [`PIPESINTF-1:0] pipe_valid;
-    logic unsigned [31:0] pipe_valid_int;
-    logic [DATASPIN*BITJ*PARALLELISM-1:0] weight_pipe [0:`PIPESINTF-1];
-    logic signed [BITH*PARALLELISM-1:0] hbias_pipe [0:`PIPESINTF-1];
-    logic unsigned [SCALING_BIT*PARALLELISM-1:0] hscaling_pipe [0:`PIPESINTF-1];
-    logic unsigned [ $clog2(DATASPIN) : 0 ] expected_spin_counter;
-    // expected_local_energy removed; we compute total energy from memory directly
-    logic signed [ENERGY_TOTAL_BIT-1:0] expected_energy;
-    logic unsigned [31:0] testcase_counter;
-    logic unsigned [ $clog2(DATASPIN)-1 : 0 ] transaction_count;
-    // Per-test print counters to limit debug output
-    logic unsigned [31:0] weight_print_count [0:`NUM_TESTS-1];
-    // Store first/last 5 transaction metadata per testcase
-    logic unsigned [31:0] first_saved_count [0:`NUM_TESTS-1];
-    logic unsigned [31:0] last_saved_count [0:`NUM_TESTS-1];
-    int last_idx [0:`NUM_TESTS-1]; // circular index for last entries
-    // saved column indices (col = addr*PARALLELISM + bank)
-    int saved_first_cols [0:`NUM_TESTS-1][0:4][0:PARALLELISM-1];
-    int saved_last_cols  [0:`NUM_TESTS-1][0:4][0:PARALLELISM-1];
-    // saved local energies per transaction (sum across banks)
-    logic signed [ENERGY_TOTAL_BIT-1:0] saved_first_locals [0:`NUM_TESTS-1][0:4];
-    logic signed [ENERGY_TOTAL_BIT-1:0] saved_last_locals  [0:`NUM_TESTS-1][0:4];
-    // saved spin chunks per transaction
-    logic [DATASPIN-1:0] saved_first_spins [0:`NUM_TESTS-1][0:4];
-    logic [DATASPIN-1:0] saved_last_spins  [0:`NUM_TESTS-1][0:4];
-
-    integer spin_idx;
-    integer correct_count;
-    integer error_count;
-    integer weight_mismatch_count;
-    integer total_count;
-    integer total_cycles;
-    integer transaction_cycles;
-    integer total_time;
-    integer transaction_time;
-    integer start_time;
-    integer end_time;
-
-    initial begin
-        transaction_count = 0;
-    end
-
-    initial begin
-        testcase_counter = 1;
-        $display("Starting energy monitor testbench. Total cases: 'd%0d. Test mode: 'b%3b, Little endian: %0d", `NUM_TESTS, `test_mode, LITTLE_ENDIAN);
-        forever begin
-            wait (energy_valid_o && energy_ready_i);
-            // Wait for the handshake to complete (energy_ready_i to go low)
-            wait(!energy_ready_i);
-            if (testcase_counter < `NUM_TESTS) begin
-                testcase_counter = testcase_counter + 1;
-                // $display("Running %0d/%0d tests...", testcase_counter, `NUM_TESTS);
-            end else begin
-                #(2*CLKCYCLE);
-                $finish;
-            end
-            @(posedge clk_i); // Wait for next clock edge before checking again
-        end
-    end
-
-    // Module instantiation
+    // SRAM signals for each PARALLELISM bank
+    logic [PARALLELISM-1:0][SRAM_AWIDTH-1:0] sram_addr;
+    logic [PARALLELISM-1:0][SRAM_DWIDTH-1:0] sram_rdata;
+    logic [PARALLELISM-1:0][SRAM_DWIDTH-1:0] sram_wdata;
+    logic [PARALLELISM-1:0][SRAM_DWIDTHB-1:0] sram_be;
+    logic [PARALLELISM-1:0] sram_cs;
+    logic [PARALLELISM-1:0] sram_we;
+    logic [PARALLELISM-1:0] sram_valid;
+     `include "tb_utils.svh"
+// Module instantiation
     energy_monitor #(
         .BITJ(BITJ),
         .BITH(BITH),
@@ -190,59 +154,54 @@ module tb_energy_monitor;
         .first_operation_i(first_operation_i),
         .energy_o(energy_o)
     );
-    // ------------------------------------------------------------------------
-    // Pseudo memory banks for weight matrix
-    // j_mem_bank[bank][addr] stores one column of the J-matrix packed as
-    // DATASPIN words of BITJ bits -> total width DATASPIN*BITJ
-    // Mapping: column `col` -> bank = col % PARALLELISM, addr = col / PARALLELISM
-    // ------------------------------------------------------------------------
-    localparam int MEM_DEPTH = DATASPIN / PARALLELISM;
-    logic [DATASPIN*BITJ-1:0] j_mem_bank [0:PARALLELISM-1][0:MEM_DEPTH-1];
 
-    // Initialize weight matrix and pack into pseudo memory banks
-    // Step 1: build a 2D weight_matrix[row][col]
-    logic signed [BITJ-1:0] weight_matrix [0:DATASPIN-1][0:DATASPIN-1];
-
-    initial begin
-        // Fill weight_matrix according to test mode and enforce symmetry
-        for (int r = 0; r < DATASPIN; r++) begin
-            for (int c = r; c < DATASPIN; c++) begin
-                logic signed [BITJ-1:0] tmp_w;
-                if (r == c) begin
-                    // diagonal elements typically zero in Ising coupling matrices
-                    tmp_w = 'd0;
-                end else begin
-                    case(`test_mode)
-                        `S1W1H1_TEST: tmp_w = {{(BITJ-1){1'b0}},1'b1};
-                        `S0W1H1_TEST: tmp_w = {{(BITJ-1){1'b0}},1'b1};
-                        `S0W0H0_TEST: tmp_w = {(BITJ){1'b1}}; // -1
-                        `S1W0H0_TEST: tmp_w = {(BITJ){1'b1}}; // -1
-                        `MaxPosValue_TEST: tmp_w = (1 << (BITJ-1)) - 1;
-                        `MaxNegValue_TEST: tmp_w = -(1 << (BITJ-1));
-                        `RANDOM_TEST: tmp_w = $urandom();
-                        default: tmp_w = 'd0;
-                    endcase
-                end
-                weight_matrix[r][c] = tmp_w;
-                weight_matrix[c][r] = tmp_w; // mirror to enforce symmetry
-            end
+    // SRAM instantiations - one per PARALLELISM bank
+    genvar i;
+    generate
+        for (i = 0; i < PARALLELISM; i++) begin : sram_banks
+            tc_sram #(
+                .Latency(MEM_LATENCY),
+                .READ_COMB(MEM_READ_COMB),
+                .DWIDTH(SRAM_DWIDTH),
+                .DEPTH(SRAM_DEPTH),
+                .AWIDTH(SRAM_AWIDTH),
+                .DWIDTHB(SRAM_DWIDTHB)
+            ) u_sram (
+                .clk_i(clk_i),
+                .addr_i(sram_addr[i]),
+                .rdata_o(sram_rdata[i]),
+                .valid_o(sram_valid[i]),
+                .wdata_i(sram_wdata[i]),
+                .be_i(sram_be[i]),
+                .cs_i(sram_cs[i]),
+                .we_i(sram_we[i])
+            );
         end
+    endgenerate
 
-        // Step 2: pack columns of weight_matrix into j_mem_bank[bank][addr]
-        for (int col = 0; col < DATASPIN; col++) begin
-            int bank;
-            int addr;
-            bank = col % PARALLELISM;
-            addr = col / PARALLELISM;
-            j_mem_bank[bank][addr] = '0;
-            for (int row = 0; row < DATASPIN; row++) begin
-                j_mem_bank[bank][addr][row*BITJ +: BITJ] = weight_matrix[row][col];
-            end
+    // Connect DUT weight address output to SRAM address input
+    // Connect DUT weight_ready_o to SRAM chip select (read enable)
+    generate
+        for (i = 0; i < PARALLELISM; i++) begin : sram_addr_connect
+            assign sram_addr[i] = weight_raddr_em_o[i];
+            assign sram_cs[i] = weight_ready_o;  // DUT controls when to read
+            assign sram_we[i] = 1'b0;            // Read-only mode
+            assign sram_be[i] = '1;              // All bytes enabled
+            assign sram_wdata[i] = '0;           // Not writing
         end
-    end
+    endgenerate
 
-   
-  
+    // Connect SRAM read data to DUT weight input
+    // Each SRAM bank provides 1024 bits for its corresponding weight slice
+    generate
+        for (i = 0; i < PARALLELISM; i++) begin : weight_data_connect
+            assign weight_i[i*SRAM_DWIDTH +: SRAM_DWIDTH] = sram_rdata[i];
+        end
+    endgenerate
+
+    // Connect SRAM valid output to DUT weight_valid_i
+    // All banks should be valid simultaneously, so AND them for safety
+    assign weight_valid_i = &sram_valid; // All banks must be valid
     
     // Clock generation
     initial begin
@@ -256,13 +215,26 @@ module tb_energy_monitor;
         rst_ni = 1;
     end
 
+    // SRAM initialization
+    // Without this, tc_sram memory array remains X and propagates unknowns.
+    initial begin
+        #1;
+        $display("[TB] SRAM mode: READ_COMB=%0d, RD_LATENCY=%0d", MEM_READ_COMB, MEM_LATENCY);
+        init_all_srams(INIT_RANDOM);
+    end
+
     // Config channel stimulus
     initial begin
         en_i = 0;
         config_valid_i = 0;
         config_counter_i = 'd0;
-        standard_mode_i = 1;
+        standard_mode_i = 0;
         first_operation_i = 1; 
+        energy_ready_i = 0;
+        hbias_i    = '0;    // zero bias (ignored in reference checker)
+        hscaling_i = '0;    // zero scaling (ignored in reference checker)
+        spin_valid_i = 0;
+        spin_i = '0;
         #(10 * CLKCYCLE);
         first_operation_i = 1; 
         en_i = 1;
@@ -276,6 +248,8 @@ module tb_energy_monitor;
         config_valid_i = 0;
     end
 
+    
+
     // Run tests
     initial begin
         if (`DBG) begin
@@ -286,657 +260,91 @@ module tb_energy_monitor;
             $fatal(1, "Testbench timeout reached. Ending simulation.");
         end
         else begin
-            // #(200000 * CLKCYCLE);
-            // $display("Testbench timeout reached. Ending simulation.");
-            // $finish;
+            // Timeout guard: prevents the simulation from hanging indefinitely
+            #(500000 * CLKCYCLE);
+            $fatal(1, "[TB] Timeout: simulation exceeded limit.");
         end
     end
 
-    // ========================================================================
-    // Reference behavior model
-    // ========================================================================
-    always_ff @(posedge clk_i or negedge rst_ni) begin: spin_record
-        if (!rst_ni) begin
-            spin_reg_valid_int <= 0;
-            for (int pi = 0; pi < `NUM_TESTS; pi++) begin
-                weight_print_count[pi] <= 0;
-                first_saved_count[pi] <= 0;
-                last_saved_count[pi] <= 0;
-                last_idx[pi] <= 0;
-                for (int k = 0; k < 5; k++) begin
-                    for (int b = 0; b < PARALLELISM; b++) begin
-                        saved_first_cols[pi][k][b] <= 0;
-                        saved_last_cols[pi][k][b] <= 0;
-                    end
-                    saved_first_locals[pi][k] <= 0;
-                    saved_last_locals[pi][k] <= 0;
-                    saved_first_spins[pi][k] <= 0;
-                    saved_last_spins[pi][k] <= 0;
+    // Spin stimulus: sends NUM_TESTS spin vectors after reset & config complete
+    initial begin
+        bit split_first_half_one;
+        bit [DATASPIN-1:0] flipped_mask;
+        bit [DATASPIN-1:0] prev_spin;
+        int flips_this_test;
+        int flips_done;
+        int changed_bits;
+        int idx;
+        wait (rst_ni);
+        wait (!config_valid_i); // wait for config phase to finish
+        @(posedge clk_i);
+        prev_spin = '0;
+        for (int t = 0; t < `NUM_TESTS; t++) begin
+            split_first_half_one = (t % 2 == 0);
+            spin_valid_i = 1;
+            if (`test_mode == `SPARSE_FLIP_TEST) begin
+                if (t == 0) begin
+                    spin_i = '0;
                 end
-            end
-            for (int i = 0; i < `NUM_TESTS; i++) begin
-                spin_reg[i] <= 0;
-                spin_reg_valid[i] <= 0;
-            end
-        end
-        else begin
-            if (spin_valid_i && spin_ready_o) begin
-                assert (spin_reg_valid_int < `NUM_TESTS) else $fatal("Spin register overflow: spin_reg_valid_int exceeded `NUM_TESTS");
-                spin_reg[spin_reg_valid_int] <= spin_i;
-                spin_reg_valid[spin_reg_valid_int] <= 1'b1;
-                spin_reg_valid_int <= spin_reg_valid_int + 1;
-            end
-        end
-    end
 
-    always_ff @(posedge clk_i or negedge rst_ni) begin: pipeline_fill
-        if (!rst_ni) begin
-            pipe_valid_int <= 0;
-            pipe_valid <= 0;
-            for (int p = 0; p < `PIPESINTF; p++) begin
-                weight_pipe[p] <= 0;
-                hbias_pipe[p] <= 0;
-                hscaling_pipe[p] <= 0;
-            end
-        end else begin
-            if (weight_valid_i && weight_ready_o) begin
-                if (`PIPESINTF == 0) begin: no_pipeline_mode
-                    // Do nothing in no pipeline mode
-                end else begin: pipeline_mode
-                    if (energy_ready_i) begin
-                        if (testcase_counter >= `NUM_TESTS) begin
-                            // Do nothing, all tests completed
-                        end else begin: pipeline_next_spin
-                            pipe_valid[pipe_valid_int] <= 1; // Mark this stage as valid
-                            weight_pipe[pipe_valid_int] <= weight_i;
-                            hbias_pipe[pipe_valid_int] <= hbias_i;
-                            hscaling_pipe[pipe_valid_int] <= hscaling_i;
-                            pipe_valid_int <= pipe_valid_int + 1;
-                        //    assert (pipe_valid_int <= `PIPESINTF) else $fatal("Pipeline overflow: pipe_valid_int exceeded `PIPESINTF");
-                        end
-                    end else begin
-                        if (spin_reg_valid[testcase_counter-1] == 1'b0) begin: pipeline_current_spin
-                            pipe_valid[pipe_valid_int] <= 1;
-                            weight_pipe[pipe_valid_int] <= weight_i;
-                            hbias_pipe[pipe_valid_int] <= hbias_i;
-                            hscaling_pipe[pipe_valid_int] <= hscaling_i;
-                            pipe_valid_int <= pipe_valid_int + 1;
-                          //  assert (pipe_valid_int <= `PIPESINTF) else $fatal("Pipeline overflow [time %0d ns]: pipe_valid_int exceeded `PIPESINTF",
-                          //  $time);
-                        end else begin: pipeline_flush
-                            for (int p = 0; p < pipe_valid_int; p++) begin
-                                if (pipe_valid[p]) begin
-                                    pipe_valid[p] <= 0;
-                                end
-                            end
-                            pipe_valid_int <= 0;
-                        end
+                flips_this_test = `SPARSE_FLIP_BASE * ((t % `SPARSE_FLIP_LEVELS) + 1);
+                if (flips_this_test > DATASPIN)
+                    flips_this_test = DATASPIN;
+
+                flipped_mask = '0;
+                flips_done = 0;
+                while (flips_done < flips_this_test) begin
+                    idx = $urandom_range(DATASPIN-1, 0);
+                    if (!flipped_mask[idx]) begin
+                        flipped_mask[idx] = 1'b1;
+                        spin_i[idx] = ~spin_i[idx];
+                        flips_done++;
                     end
                 end
             end
-        end
-    end
-
-    // Simplified expected-energy handling: compute total energy directly from memory
-    always_ff @(posedge clk_i or negedge rst_ni) begin
-        if (!rst_ni) begin
-            energy_ready_i <= 0;
-            expected_spin_counter <= 0;
-            expected_energy <= 0;
-        end else begin
-            if (energy_valid_o && energy_ready_i) begin: new_testcase_start
-                energy_ready_i <= 0;
-                expected_spin_counter <= 0;
-                expected_energy <= 0;
-            end else if (weight_valid_i && weight_ready_o) begin: calc_total_energy
-                // Compute reference total energy for current testcase in one pass
-                expected_energy <= compute_total_energy_from_mem(spin_reg[testcase_counter-1]);
-                expected_spin_counter <= DATASPIN;
-                energy_ready_i <= 1;
-            end
-        end
-    end
-
-    // ========================================================================
-    // Tasks and functions
-    // ========================================================================
-    // compute_local_energy removed — tests use compute_total_energy_from_mem()
-
-    // Task for timer
-    task automatic timer();
-        begin
-            total_cycles = 0;
-            transaction_cycles = 0;
-            total_time = 0;
-            transaction_time = 0;
-            start_time = 0;
-            end_time = 0;
-            wait(rst_ni);
-            wait(spin_valid_i && spin_ready_o);
-            start_time = $time;
-            wait(testcase_counter == `NUM_TESTS && energy_valid_o && energy_ready_i);
-            end_time = $time;
-            total_time = end_time - start_time;
-            total_cycles = total_time / CLKCYCLE;
-            transaction_cycles = total_cycles / `NUM_TESTS;
-            transaction_time = transaction_cycles * CLKCYCLE;
-            $display("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-            $display("Timer [Time %0d ns]: start time: %0d ns, end time: %0d ns, duration: %0d ns, transactions: %0d",
-                $time, start_time, end_time, total_time, `NUM_TESTS);
-            $display("Timer [Time %0d ns]: Total cycles: %0d cc [%0d ns], Cycles/transaction: %0d cc [%0d ns]",
-                $time, total_cycles, total_time, transaction_cycles, transaction_time);
-            $display("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-        end
-    endtask
-
-    // Task for scoreboard
-    task automatic check_energy();
-        begin
-            // local variables must be declared before any statements
-            int tc_print;
-            int nf;
-            int nl;
-            int start;
-            int ii;
-            int idx;
-            int ff;
-            int pb;
-            int pb2;
-            int pb3;
-            int pb4;
-
-            correct_count = 0;
-            error_count = 0;
-            total_count = 0;
-            wait(rst_ni);
-            do begin
-                // wait for energy handshake
-                wait(energy_valid_o && energy_ready_i);
-                if (energy_o !== expected_energy) begin
-                    $error("Time: %0d ns, Testcase [%0d] Energy mismatch: received 'd%0d, expected 'd%0d",
-                        $time, testcase_counter, energy_o, expected_energy);
-                    error_count = error_count + 1;
-                end else begin
-                    $display("Time: %0d ns, Testcase [%0d] Energy match: 'd%0d", $time, testcase_counter, energy_o);
-                    correct_count = correct_count + 1;
-                end
-                // Print first 5 and last 5 saved transactions for this testcase
-                tc_print = (testcase_counter == 0) ? 0 : testcase_counter - 1;
-                if (tc_print >= 0 && tc_print < `NUM_TESTS) begin
-                    $display("[TB] --- Transactions summary for testcase %0d ---", testcase_counter);
-                    // First entries
-                    nf = first_saved_count[tc_print];
-                    $display("[TB] First %0d transactions (up to 5):", nf);
-                    for (ff = 0; ff < nf; ff++) begin
-                        $write("[TB]  trans %0d cols:", ff);
-                        for (pb = 0; pb < PARALLELISM; pb++) begin
-                            $write(" %0d", saved_first_cols[tc_print][ff][pb]);
-                        end
-                        $write("  locals: %0d", saved_first_locals[tc_print][ff]);
-                        $write("  spin_chunk: ");
-                        for (pb2 = 0; pb2 < PARALLELISM; pb2++) begin
-                            logic spin_bit_summary;
-                            int col_summary;
-                            col_summary = saved_first_cols[tc_print][ff][pb2];
-                            if (LITTLE_ENDIAN == `True)
-                                spin_bit_summary = saved_first_spins[tc_print][ff][col_summary];
+            else begin
+                for (int s = 0; s < DATASPIN; s++) begin
+                    case (`test_mode)
+                        `S1W1H1_TEST:      spin_i[s] = 1'b1;
+                        `S0W1H1_TEST:      spin_i[s] = 1'b0;
+                        `S0W0H0_TEST:      spin_i[s] = 1'b0;
+                        `S1W0H0_TEST:      spin_i[s] = 1'b1;
+                        `MaxPosValue_TEST: spin_i[s] = 1'b1;
+                        `MaxNegValue_TEST: spin_i[s] = 1'b0;
+                        `RANDOM_TEST:      spin_i[s] = $urandom() % 2;
+                        `HALF_SPLIT_ALT_TEST: begin
+                            if (split_first_half_one)
+                                spin_i[s] = (s < (DATASPIN/2)) ? 1'b1 : 1'b0;
                             else
-                                spin_bit_summary = saved_first_spins[tc_print][ff][DATASPIN - 1 - col_summary];
-                            $write("%0d", spin_bit_summary);
+                                spin_i[s] = (s < (DATASPIN/2)) ? 1'b0 : 1'b1;
                         end
-                        $display("");
-                    end
-                    // Last entries (print in chronological order)
-                    nl = last_saved_count[tc_print];
-                    $display("[TB] Last %0d transactions (up to 5):", nl);
-                    start = (last_idx[tc_print]) % 5;
-                    for (ii = 0; ii < nl; ii++) begin
-                        idx = (start + ii) % 5;
-                        $write("[TB]  trans %0d cols:", ii);
-                        for (pb3 = 0; pb3 < PARALLELISM; pb3++) begin
-                            $write(" %0d", saved_last_cols[tc_print][idx][pb3]);
-                        end
-                        $write("  locals: %0d", saved_last_locals[tc_print][idx]);
-                        $write("  spin_chunk: ");
-                        for (pb4 = 0; pb4 < PARALLELISM; pb4++) begin
-                            logic spin_bit_summary_last;
-                            int col_summary_last;
-                            col_summary_last = saved_last_cols[tc_print][idx][pb4];
-                            if (LITTLE_ENDIAN == `True)
-                                spin_bit_summary_last = saved_last_spins[tc_print][idx][col_summary_last];
-                            else
-                                spin_bit_summary_last = saved_last_spins[tc_print][idx][DATASPIN - 1 - col_summary_last];
-                            $write("%0d", spin_bit_summary_last);
-                        end
-                        $display("");
-                    end
-                    $display("[TB] --- end summary for testcase %0d ---", testcase_counter);
-                end
-                total_count = total_count + 1;
-                if (total_count == `NUM_TESTS) begin
-                    @(posedge clk_i);
-                    $display("----------------------------------------");
-                    $display("Scoreboard [Time %0d ns]: %0d/%0d correct, %0d/%0d errors",
-                        $time, correct_count, total_count, error_count, total_count);
-                    $display("----------------------------------------");
-                end
-                @(posedge clk_i);
-            end
-            while (total_count <= `NUM_TESTS);
-        end
-    endtask
-
-    // Task to handle spin input
-    task automatic spin_interface();
-        begin
-            spin_valid_i = 0;
-            spin_i = 'd0;
-            // Wait for reset to be released
-            wait(rst_ni);
-            do begin
-                // Wait for config to complete if it's active
-                if (config_valid_i) begin
-                    wait (!config_valid_i);
-                    @(posedge clk_i); // Wait one more cycle after config
-                end
-
-                // Generate and send spin data
-                spin_valid_i = 1;
-                for (int i = 0; i < DATASPIN; i++) begin
-                    case(`test_mode)
-                        `S1W1H1_TEST: spin_i[i] = 1'b1;
-                        `S0W1H1_TEST: spin_i[i] = 1'b0;
-                        `S0W0H0_TEST: spin_i[i] = 1'b0;
-                        `S1W0H0_TEST: spin_i[i] = 1'b1;
-                        `MaxPosValue_TEST: spin_i[i] = 1'b1;
-                        `MaxNegValue_TEST: spin_i[i] = 1'b0;
-                        `RANDOM_TEST: spin_i[i] = $urandom() % 2;
-                        default: spin_i[i] = 1'b0;
+                        default:           spin_i[s] = 1'b0;
                     endcase
                 end
-
-                // Wait for handshake
-                wait(spin_ready_o);
-                @(posedge clk_i);
-                spin_valid_i = 0;
-
-                // Wait before next spin operation
-                if (SPIN_LATENCY_RANDOM == `True) begin
-                    repeat($urandom_range(0, SPIN_LATENCY)) @(posedge clk_i);
-                end else begin
-                    repeat(SPIN_LATENCY) @(posedge clk_i);
-                end
             end
-            while (spin_reg_valid_int < `NUM_TESTS);
-        end
-    endtask
-
-    // Compute total energy from j_mem_bank using full spin vector
-    function automatic signed [ENERGY_TOTAL_BIT-1:0] compute_total_energy_from_mem(
-        input logic [DATASPIN-1:0] spin_vec
-    );
-        // Use a wider accumulator to avoid overflow during accumulation
-        logic signed [ENERGY_TOTAL_BIT+BITJ+8:0] accum;
-        logic signed [BITJ-1:0] weight_temp;
-        logic spin_val_col;
-        logic spin_val_row;
-        int col;
-        int row;
-        int bank;
-        int addr;
-        logic [DATASPIN*BITJ-1:0] column_data;
-        begin
-            accum = 0;
-            for (col = 0; col < DATASPIN; col++) begin
-                if (LITTLE_ENDIAN == `True) begin
-                    spin_val_col = spin_vec[col];
-                end else begin
-                    spin_val_col = spin_vec[DATASPIN - 1 - col];
-                end
-                bank = col % PARALLELISM;
-                addr = col / PARALLELISM;
-                column_data = j_mem_bank[bank][addr];
-                for (row = 0; row < DATASPIN; row++) begin
-                    if (row == col) begin
-                        // skip diagonal
-                    end else begin
-                        if (LITTLE_ENDIAN == `True) begin
-                            spin_val_row = spin_vec[row];
-                        end else begin
-                            spin_val_row = spin_vec[DATASPIN - 1 - row];
-                        end
-                        weight_temp = $signed(column_data[row*BITJ +: BITJ]);
-                        // contribution = s_row * s_col * J[row][col]
-                        // s bit: 1 => +1, 0 => -1
-                        if (spin_val_row) begin
-                            if (spin_val_col) accum += weight_temp;
-                            else accum -= weight_temp;
-                        end else begin
-                            if (spin_val_col) accum -= weight_temp;
-                            else accum += weight_temp;
-                        end
-                    end
-                end
+            changed_bits = 0;
+            for (int s = 0; s < DATASPIN; s++) begin
+                if (spin_i[s] != prev_spin[s]) changed_bits++;
             end
-            // matrix is symmetric and we summed both (i,j) and (j,i), so divide by 2
-            compute_total_energy_from_mem = accum; // arithmetic shift for division by 2
+            $display("[TB][SPIN] iter=%0d changed_bits=%0d", t, changed_bits);
+            prev_spin = spin_i;
+            wait (spin_ready_o);
+            @(posedge clk_i);
+            spin_valid_i = 0;
+            repeat (SPIN_LATENCY) @(posedge clk_i);
         end
-    endfunction
-    // Compute local energy for one parallel unit from the packed weight_i signal
-function automatic signed [ENERGY_TOTAL_BIT-1:0] compute_local_energy_from_weight_input(
-    input logic [DATASPIN-1:0] spin_vec,
-    input logic [DATASPIN*BITJ-1:0] weight_column,  // One column from weight_i
-    input int col  // Column index for this unit
-);
-    logic signed [ENERGY_TOTAL_BIT+BITJ+4:0] accum_col;
-    logic signed [BITJ-1:0] weight_temp;
-    logic spin_val_col;
-    logic spin_val_row;
-    int row;
-    begin
-        accum_col = 0;
-        
-        // Get spin value for this column
-        if (LITTLE_ENDIAN == `True) 
-            spin_val_col = spin_vec[col];
-        else 
-            spin_val_col = spin_vec[DATASPIN - 1 - col];
-        
-        // Iterate through all rows in this column
-        for (row = 0; row < DATASPIN; row++) begin
-            if (row == col) begin
-                // Skip diagonal
-            end else begin
-                // Get spin value for this row
-                if (LITTLE_ENDIAN == `True) 
-                    spin_val_row = spin_vec[row];
-                else 
-                    spin_val_row = spin_vec[DATASPIN - 1 - row];
-                
-                // Extract weight from packed column data
-                weight_temp = $signed(weight_column[row*BITJ +: BITJ]);
-                
-                // Calculate energy contribution: s_row * s_col * J[row][col]
-                if (spin_val_row) begin
-                    if (spin_val_col) accum_col += weight_temp;
-                    else accum_col -= weight_temp;
-                end else begin
-                    if (spin_val_col) accum_col -= weight_temp;
-                    else accum_col += weight_temp;
-                end
-            end
-        end
-        
-        compute_local_energy_from_weight_input = accum_col;
     end
-endfunction
 
-    // Compute local energy for a single column from j_mem_bank and a spin vector
-    function automatic signed [ENERGY_TOTAL_BIT-1:0] compute_local_energy_from_mem_col(
-        input logic [DATASPIN-1:0] spin_vec,
-        input int col
-    );
-        logic signed [ENERGY_TOTAL_BIT+BITJ+4:0] accum_col;
-        logic signed [BITJ-1:0] weight_temp_col;
-        logic spin_val_col_c;
-        logic spin_val_row_c;
-        int row_c;
-        int bank_c;
-        int addr_c;
-        logic [DATASPIN*BITJ-1:0] column_data_c;
-        begin
-            accum_col = 0;
-            if (col < 0 || col >= DATASPIN) begin
-                compute_local_energy_from_mem_col = '0;
-            end else begin
-                bank_c = col % PARALLELISM;
-                addr_c = col / PARALLELISM;
-                column_data_c = j_mem_bank[bank_c][addr_c];
-                if (LITTLE_ENDIAN == `True) spin_val_col_c = spin_vec[col];
-                else spin_val_col_c = spin_vec[DATASPIN - 1 - col];
-                for (row_c = 0; row_c < DATASPIN; row_c++) begin
-                    if (row_c == col) begin
-                        // skip diagonal
-                    end else begin
-                        if (LITTLE_ENDIAN == `True) spin_val_row_c = spin_vec[row_c];
-                        else spin_val_row_c = spin_vec[DATASPIN - 1 - row_c];
-                        weight_temp_col = $signed(column_data_c[row_c*BITJ +: BITJ]);
-                        if (spin_val_row_c) begin
-                            if (spin_val_col_c) accum_col += weight_temp_col;
-                            else accum_col -= weight_temp_col;
-                        end else begin
-                            if (spin_val_col_c) accum_col -= weight_temp_col;
-                            else accum_col += weight_temp_col;
-                        end
-                    end
-                end
-                compute_local_energy_from_mem_col = accum_col;
-            end
-        end
-    endfunction
-
-    // Task to handle weight input
-    task automatic weight_interface();
-        begin
-            // Declare all variables at the beginning
-            logic signed [BITJ-1:0] weight_temp;
-            logic signed [BITH-1:0] hbias_temp;
-            logic unsigned [SCALING_BIT-1:0] hscaling_temp;
-            int tc_idx;
-            logic [DATASPIN-1:0] current_spin;
-            logic signed [ENERGY_TOTAL_BIT-1:0] local_energies [0:PARALLELISM-1];
-            logic signed [ENERGY_TOTAL_BIT-1:0] total_local_sum;
-            int current_cols [0:PARALLELISM-1];
-            int b_idx;
-            int addr_idx;
-            int fi, li, bb;
-            logic [DATASPIN*BITJ-1:0] weight_col;
-            spin_idx = 0;
-
-            weight_valid_i = 0;
-            weight_i = 'd0;
-            hbias_i = 'd0;
-            hscaling_i = 'd0;
-            wait(rst_ni);
-
-            forever begin
-                // Wait for config to complete
-                if (config_valid_i) begin
-                    wait (!config_valid_i);
-                    @(posedge clk_i);
-                end
-
-                // Load weight vector from pseudo memory banks using DUT-provided addresses
-                // Each bank provides an address `weight_raddr_em_o[bank]` selecting a column
-                // Pack columns from bank 0..PARALLELISM-1 into `weight_i` in the same order
-                for (int b = 0; b < PARALLELISM; b++) begin
-                    // read address from DUT (address width = $clog2(DATASPIN/PARALLELISM))
-                    int addr = weight_raddr_em_o[b];
-                    // guard: if addr out-of-range, clamp
-                    if (addr < 0 || addr >= MEM_DEPTH) begin
-                        addr = 0;
-                    end
-                    // j_mem_bank[b][addr] holds DATASPIN*BITJ bits for this column
-                    weight_i[b*DATASPIN*BITJ +: DATASPIN*BITJ] =  j_mem_bank[b][addr];
-                end
-
-                // ====================================================================
-                // Calculate and display local energies for each unit every weight change
-                // ====================================================================
-                tc_idx = (testcase_counter == 0) ? 0 : testcase_counter - 1;
-                
-                // Get current spin vector
-                if (spin_reg_valid_int == 0) 
-                    current_spin = spin_reg[0];
-                else 
-                    current_spin = spin_reg[spin_reg_valid_int - 1];
-                
-                // Calculate local energy for each unit/bank
-                // Calculate local energy for each unit/bank
-total_local_sum = 'd0;
-for (b_idx = 0; b_idx < PARALLELISM; b_idx++) begin
-    addr_idx = weight_raddr_em_o[b_idx];
-    if (addr_idx < 0 || addr_idx >= MEM_DEPTH) addr_idx = 0;
-    
-    // Column index for this bank
-    current_cols[b_idx] = addr_idx * PARALLELISM + b_idx;
-    
-    // Extract this unit's weight column from packed weight_i
-  
-    weight_col = weight_i[b_idx*DATASPIN*BITJ +: DATASPIN*BITJ];
-    
-    // Compute local energy directly from weight_i (not from memory)
-    local_energies[b_idx] = compute_local_energy_from_weight_input(
-        current_spin, 
-        weight_col, 
-        current_cols[b_idx]
-    );
-    total_local_sum += local_energies[b_idx];
-end
-                
-                // Display local energies only for first and last 5 transactions per testcase
-                if (tc_idx >= 0 && tc_idx < `NUM_TESTS) begin
-                    if (first_saved_count[tc_idx] < 5 || 
-                        (transaction_count >= (DATASPIN/PARALLELISM - 5))) begin
-                        $display("========================================================");
-                        $display("[TB] Time %0t ns | Test %0d | Transaction %0d", 
-                                 $time, testcase_counter, transaction_count);
-                        $display("--------------------------------------------------------");
-                        // Display spin chunk for the 4 columns being processed
-                        $write("[TB]   Spin Chunk (4 cols): ");
-                        for (b_idx = 0; b_idx < PARALLELISM; b_idx++) begin
-                            logic spin_bit;
-                            int col_idx;
-                            col_idx = current_cols[b_idx];
-                            if (LITTLE_ENDIAN == `True)
-                                spin_bit = current_spin[col_idx];
-                            else
-                                spin_bit = current_spin[DATASPIN - 1 - col_idx];
-                            $write("col[%0d]=%0d ", col_idx, spin_bit);
-                        end
-                        $display("");
-                        $display("--------------------------------------------------------");
-                        // Display each unit's calculation details
-                        for (b_idx = 0; b_idx < PARALLELISM; b_idx++) begin
-                            logic spin_bit_unit;
-                            logic [DATASPIN*BITJ-1:0] weight_col_unit;
-                            int col_idx_unit;
-                            col_idx_unit = current_cols[b_idx];
-                            weight_col_unit = weight_i[b_idx*DATASPIN*BITJ +: DATASPIN*BITJ];
-                            if (LITTLE_ENDIAN == `True)
-                                spin_bit_unit = current_spin[col_idx_unit];
-                            else
-                                spin_bit_unit = current_spin[DATASPIN - 1 - col_idx_unit];
-                            
-                            $display("[TB]   Unit %0d | Col %3d | s[%0d]=%0d | Weights[1023:0]=0x%0256x | LocalE=%0d", 
-                                     b_idx, col_idx_unit, col_idx_unit, spin_bit_unit, 
-                                     weight_col_unit, local_energies[b_idx]);
-                        end
-                        $display("--------------------------------------------------------");
-                        $display("[TB]   TOTAL LOCAL SUM = %0d", total_local_sum);
-                        $display("========================================================");
-                    end
-                end
-                
-                // Save data for first 5 and last 5 transactions
-                if (tc_idx >= 0 && tc_idx < `NUM_TESTS) begin
-                    // Save first 5 entries
-                    fi = first_saved_count[tc_idx];
-                    if (fi < 5) begin
-                        for (bb = 0; bb < PARALLELISM; bb++) begin
-                            saved_first_cols[tc_idx][fi][bb] = current_cols[bb];
-                        end
-                        saved_first_locals[tc_idx][fi] = total_local_sum;
-                        saved_first_spins[tc_idx][fi] = current_spin;
-                        first_saved_count[tc_idx] = first_saved_count[tc_idx] + 1;
-                    end
-                    
-                    // Save last 5 entries (circular buffer)
-                    li = last_idx[tc_idx] % 5;
-                    for (bb = 0; bb < PARALLELISM; bb++) begin
-                        saved_last_cols[tc_idx][li][bb] = current_cols[bb];
-                    end
-                    saved_last_locals[tc_idx][li] = total_local_sum;
-                    saved_last_spins[tc_idx][li] = current_spin;
-                    last_idx[tc_idx] = (last_idx[tc_idx] + 1) % 5;
-                    if (last_saved_count[tc_idx] < 5) 
-                        last_saved_count[tc_idx] = last_saved_count[tc_idx] + 1;
-                end
-
-                // Zero-out the positions corresponding to the current spin (masking)
-               
-
-                // Force hbias to zero (bias disabled / removed)
-                for (int i = 0; i < PARALLELISM; i++) begin
-                    hbias_i[i*BITH +: BITH] = 'd0;
-                end
-
-                // Force hscaling to zero (scaling disabled)
-                for (int i = 0; i < PARALLELISM; i++) begin
-                    hscaling_i[i*SCALING_BIT +: SCALING_BIT] = 'd0;
-                end
-
-                // Now assert valid and wait for a handshake
-                weight_valid_i = 1;
-                do @(posedge clk_i);
-                while (!(weight_valid_i && weight_ready_o));
-            
-                // Handshake occurred here - safe to update data next cycle
-                spin_idx = (spin_idx + PARALLELISM) % DATASPIN;
-                transaction_count++;
-            
-                // Deassert valid if you want to insert latency
-                if (MEM_LATENCY > 0) begin
-                    weight_valid_i = 0;
-                    if (MEM_LATENCY_RANDOM == `True) begin
-                        repeat($urandom_range(0, MEM_LATENCY)) @(posedge clk_i);
-                    end else begin
-                        repeat(MEM_LATENCY) @(posedge clk_i);
-                    end
-                end
-            end
-        end
-    endtask
-
-    // ========================================================================
-    // Testbench task and timer setup
-    // ========================================================================
-    // Spin interface
+    // Reference energy checker: runs once per test, then finishes
     initial begin
-        fork
-            spin_interface();
-            weight_interface();
-            check_energy();
-            timer();
-        join_none
-    end
-
-    // Runtime check: compare DUT internal weight array with TB's packed `weight_i`
-    // Triggered on weight handshake (weight_valid && weight_ready)
-    always_ff @(posedge clk_i or negedge rst_ni) begin
-        if (!rst_ni) begin
-            weight_mismatch_count <= 0;
-        end else begin
-            if (weight_valid_i && weight_ready_o) begin
-                int b;
-                int r;
-                logic signed [BITJ-1:0] tb_w;
-                logic signed [BITJ-1:0] dut_w;
-                for (b = 0; b < PARALLELISM; b++) begin
-                    for (r = 0; r < DATASPIN; r++) begin
-                        tb_w = $signed(weight_i[b*DATASPIN*BITJ + r*BITJ +: BITJ]);
-                        dut_w = dut.weight_i_array[b][r];
-                        if (tb_w !== dut_w) begin
-                            weight_mismatch_count <= weight_mismatch_count + 1;
-                            if (weight_mismatch_count <= 20) begin
-                                $error("[TB] Time %0t: weight mismatch bank %0d row %0d TB=%0d DUT=%0d", $time, b, r, tb_w, dut_w);
-                            end
-                        end
-                    end
-                end
-            end
-        end
+        wait (rst_ni);
+        repeat (`NUM_TESTS) check_energy_vs_ref();
+        // Keep simulation alive for a few cycles so wave viewers can sample
+        // local_energy_col_ref/local_energy_col_ref_flat cleanly.
+        repeat (20) @(posedge clk_i);
+        $display("[TB] All %0d test(s) complete.", `NUM_TESTS);
+        $finish;
     end
 
 
-endmodule
+endmodule 

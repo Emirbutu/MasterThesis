@@ -119,9 +119,6 @@ module energy_monitor #(
     logic unsigned [DATASCALING-1:0] hscaling_pipe;
     logic weight_valid_pipe;
     logic weight_ready_pipe;
-    //2 cycle sampled to create time for additional curcuitry finding the positions of flipped spins
-    // logic [2:0] weight_ready_pipe_sampled;
-    // internal signals
     logic [DATASPIN-1:0] spin_flipped;
     logic [DATASPIN-1:0] spin_unflipped;
     logic [DATASPIN-1:0] spin_cached;
@@ -137,21 +134,13 @@ module energy_monitor #(
     logic cmpt_done;
     logic [PARALLELISM-1:0] current_spin;
     logic [PARALLELISM-1:0] current_spin_raw;
-    logic signed [LOCAL_ENERGY_BIT*PARALLELISM-1:0] local_energy;
+    logic signed [PARALLELISM-1:0][LOCAL_ENERGY_BIT-1:0] local_energy;
     logic signed [LOCAL_ENERGY_BIT + $clog2(PARALLELISM) - 1:0] local_energy_parallel;
      // Store accumulator output when energy_valid_o is high
     logic signed [ENERGY_TOTAL_BIT-1:0] energy_o_stored;
     logic [DATAJ-1:0] weight_i_masked;
     logic [DATAJ-1:0] weight_masked;
     logic [DATAJ-1:0] weight_selected;
-    logic signed [BITJ-1:0] weight_i_array [PARALLELISM-1:0][DATASPIN-1:0];
-    logic signed [BITJ-1:0] weight_i_masked_array [PARALLELISM-1:0][DATASPIN-1:0];
-    logic signed [BITJ-1:0] weight_pipe_array [PARALLELISM-1:0][DATASPIN-1:0];
-    logic signed [BITJ-1:0] weight_masked_array [PARALLELISM-1:0][DATASPIN-1:0];
-    logic signed [BITJ-1:0] weight_selected_array [PARALLELISM-1:0][DATASPIN-1:0];
-    logic signed [BITH-1:0] hbias_pipe_array [PARALLELISM-1:0];
-    logic signed [BITH-1:0] hbias_conditional_array [PARALLELISM-1:0];
-    logic [SCALING_BIT-1:0] hscaling_pipe_array [PARALLELISM-1:0];
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] flipped_count [PARALLELISM-1:0];
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] max_flipped_count;
     logic signed [ENERGY_TOTAL_BIT-1:0] accum_data_in;
@@ -160,6 +149,7 @@ module energy_monitor #(
     localparam int BITS_PER_CHUNK = DATASPIN / PARALLELISM;
     logic [PARALLELISM-1:0][BITS_PER_CHUNK-1:0] flipped_valid_array;
     logic [PARALLELISM-1:0][BITS_PER_CHUNK-1:0][`LOG2UP(BITS_PER_CHUNK)-1:0] flipped_positions_array;
+    logic [PARALLELISM-1:0][BITS_PER_CHUNK-1:0] spin_flipped_interleaved_array;
 
     // handshake signals
     logic accum_prev_energy_valid;
@@ -177,15 +167,9 @@ module energy_monitor #(
     genvar i_weight_raddr;
 
     generate
-        for (genvar i_unpack = 0; i_unpack < PARALLELISM; i_unpack++) begin : gen_unpack_arrays
-            assign hbias_pipe_array[i_unpack] = hbias_pipe[i_unpack*BITH +: BITH];
-            assign hscaling_pipe_array[i_unpack] = hscaling_pipe[i_unpack*SCALING_BIT +: SCALING_BIT];
-            for (genvar j_unpack = 0; j_unpack < DATASPIN; j_unpack++) begin : gen_unpack_per_spin
-                assign weight_i_array[i_unpack][j_unpack] = weight_i[i_unpack*BITJ*DATASPIN + j_unpack*BITJ +: BITJ];
-                assign weight_pipe_array[i_unpack][j_unpack] = weight_pipe[i_unpack*BITJ*DATASPIN + j_unpack*BITJ +: BITJ];
-                assign weight_i_masked[i_unpack*BITJ*DATASPIN + j_unpack*BITJ +: BITJ] = weight_i_masked_array[i_unpack][j_unpack];
-                assign weight_masked[i_unpack*BITJ*DATASPIN + j_unpack*BITJ +: BITJ] = weight_masked_array[i_unpack][j_unpack];
-                assign weight_selected[i_unpack*BITJ*DATASPIN + j_unpack*BITJ +: BITJ] = weight_selected_array[i_unpack][j_unpack];
+        for (genvar i_interleave = 0; i_interleave < PARALLELISM; i_interleave++) begin : gen_spin_flipped_interleaved
+            for (genvar j_interleave = 0; j_interleave < BITS_PER_CHUNK; j_interleave++) begin : gen_spin_flipped_interleaved_bits
+                assign spin_flipped_interleaved_array[i_interleave][j_interleave] = spin_flipped[j_interleave * PARALLELISM + i_interleave];
             end
         end
     endgenerate
@@ -208,14 +192,34 @@ module energy_monitor #(
     endgenerate
 
     // pipeline interfaces
-    // Direct wiring replaces bp_pipe for config interface
-    assign config_counter_pipe = config_counter_i;
-    assign config_valid_pipe = config_valid_i;
-    assign config_ready_o = config_ready_pipe;
-    // Direct wiring replaces bp_pipe for spin interface
-    assign spin_pipe = spin_i;
-    assign spin_valid_pipe = spin_valid_i;
-    assign spin_ready_o = spin_ready_pipe;
+    bp_pipe #(
+        .DATAW(SPINIDX_BIT),
+        .PIPES(PIPESINTF)
+    ) u_pipe_config (
+        .clk_i(clk_i),
+        .rst_ni(rst_ni),
+        .data_i(config_counter_i),
+        .data_o(config_counter_pipe),
+        .valid_i(config_valid_i),
+        .valid_o(config_valid_pipe),
+        .ready_i(config_ready_pipe),
+        .ready_o(config_ready_o)
+    );
+
+    bp_pipe #(
+        .DATAW(DATASPIN),
+        .PIPES(PIPESINTF)
+    ) u_pipe_spin (
+        .clk_i(clk_i),
+        .rst_ni(rst_ni),
+        .data_i(spin_i),
+        .data_o(spin_pipe),
+        .valid_i(spin_valid_i),
+        .valid_o(spin_valid_pipe),
+        .ready_i(spin_ready_pipe),
+        .ready_o(spin_ready_o)
+    );
+
     // Mask only the weights at the fetched positions (using counter_q_diff and valid bits) before the bp_pipe
     
     always_comb begin
@@ -224,29 +228,38 @@ module energy_monitor #(
                 if (!flipped_valid_array[i][counter_q_diff]) begin
                     // Mask all weights for this parallel unit
                     for (int j = 0; j < DATASPIN; j++) begin
-                        weight_i_masked_array[i][j] = '0;
+                        weight_i_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] = '0;
                     end
                 end else begin
                     // Pass through all weights for this parallel unit
                     for (int j = 0; j < DATASPIN; j++) begin
-                        weight_i_masked_array[i][j] = weight_i_array[i][j];
+                        weight_i_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
+                            weight_i[i*BITJ*DATASPIN + j*BITJ +: BITJ];
                     end
                 end
             end
         end else begin
             for (int i = 0; i < PARALLELISM; i++) begin
                 for (int j = 0; j < DATASPIN; j++) begin
-                    weight_i_masked_array[i][j] = weight_i_array[i][j];
+                    weight_i_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
+                        weight_i[i*BITJ*DATASPIN + j*BITJ +: BITJ];
                 end
             end
         end
     end
-    // Direct wiring replaces bp_pipe for weight interface
-    assign weight_pipe = weight_i_masked;
-    assign hbias_pipe = hbias_i;
-    assign hscaling_pipe = hscaling_i;
-    assign weight_valid_pipe = weight_valid_i;
-    assign weight_ready_o = weight_ready_pipe;
+    bp_pipe #(
+        .DATAW(DATAJ + DATAH + DATASCALING),
+        .PIPES(PIPESINTF)
+    ) u_pipe_weight (
+        .clk_i(clk_i),
+        .rst_ni(rst_ni),
+        .data_i({weight_i_masked, hbias_i, hscaling_i}),
+        .data_o({weight_pipe, hbias_pipe, hscaling_pipe}),
+        .valid_i(weight_valid_i),
+        .valid_o(weight_valid_pipe),
+        .ready_i(weight_ready_pipe),
+        .ready_o(weight_ready_o)
+    );
     // `FF(weight_ready_pipe_sampled[0], weight_ready_pipe, 1'b0, clk_i, rst_ni)
     //`FF(weight_ready_pipe_sampled[1], weight_ready_pipe_sampled[0], 1'b0, clk_i, rst_ni)
     //`FF(weight_ready_pipe_sampled[2], weight_ready_pipe_sampled[1], 1'b0, clk_i, rst_ni)
@@ -342,16 +355,8 @@ module energy_monitor #(
     // Each counter processes interleaved bits: counter[i] gets bits i, i+PARALLELISM, i+2*PARALLELISM, ...
     generate
         for (i = 0; i < PARALLELISM; i++) begin: gen_popcount_parallel
-            localparam int BITS_PER_TREE = DATASPIN / PARALLELISM;
-            logic [BITS_PER_TREE-1:0] spin_flipped_interleaved;
-            
-            // Extract interleaved bits for this tree
-            for (genvar j = 0; j < BITS_PER_TREE; j++) begin
-                assign spin_flipped_interleaved[j] = spin_flipped[j * PARALLELISM + i];
-            end
-            
             adder_tree_unsigned #(
-                .N(BITS_PER_TREE),
+                .N(BITS_PER_CHUNK),
                 .DATAW(1),
                 .PIPES(0)
             ) u_popcount_flipped (
@@ -359,7 +364,7 @@ module energy_monitor #(
                 .rst_ni(rst_ni),
                 .en_i(en_i && !standard_mode_i && !first_operation_sampled),
                 .data_valid_i(spin_handshake_pulse),
-                .data_i(spin_flipped_interleaved),
+                .data_i(spin_flipped_interleaved_array[i]),
                 .sum_o(flipped_count[i]),
                 .data_valid_o(spin_handshake_sampled[i]) // 
             );
@@ -382,15 +387,8 @@ module energy_monitor #(
     // Find all '1' positions in flipped spin vector
     generate
     for (i = 0; i < PARALLELISM; i++) begin: gen_find_all_ones
-        localparam int BITS_PER_CHUNK = DATASPIN / PARALLELISM;
-        logic [BITS_PER_CHUNK-1:0] spin_flipped_interleaved;
         logic [BITS_PER_CHUNK-1:0][`LOG2UP(BITS_PER_CHUNK)-1:0] flipped_positions;
         logic [BITS_PER_CHUNK-1:0] flipped_valid;
-
-        // Extract interleaved bits for this chunk
-        for (genvar j = 0; j < BITS_PER_CHUNK; j++) begin
-            assign spin_flipped_interleaved[j] = spin_flipped[j * PARALLELISM + i];
-        end
 
         find_all_ones_iterative #(
             .N(BITS_PER_CHUNK)
@@ -398,7 +396,7 @@ module energy_monitor #(
             .clk_i(clk_i),
             .rst_ni(rst_ni),
             .start_i(spin_handshake_sampled[0]), // or another suitable handshake
-            .data_i(spin_flipped_interleaved),
+            .data_i(spin_flipped_interleaved_array[i]),
             .positions(flipped_positions),
             .valid_o(flipped_valid),
             .count(), // connect if needed
@@ -419,19 +417,23 @@ endgenerate
     // Mask weights with spin_unflipped bits
     // For each parallel unit, mask its weight array based on flipped spins
     // Mask all weights for a spin if that spin is flipped
-    generate
-        for (genvar j = 0; j < DATASPIN; j++) begin: mask_weights_by_spin
-            for (genvar i = 0; i < PARALLELISM; i++) begin
-                assign weight_masked_array[i][j] = spin_unflipped[j] ? weight_pipe_array[i][j] : '0;
+    always_comb begin
+        for (int j = 0; j < DATASPIN; j++) begin
+            for (int i = 0; i < PARALLELISM; i++) begin
+                weight_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
+                    spin_unflipped[j] ? weight_pipe[i*BITJ*DATASPIN + j*BITJ +: BITJ] : '0;
             end
         end
-    endgenerate
+    end
 
     // Select between masked and unmasked weights based on first_operation_i
     always_comb begin
         for (int i = 0; i < PARALLELISM; i++) begin
             for (int j = 0; j < DATASPIN; j++) begin
-                weight_selected_array[i][j] = (first_operation_sampled | standard_mode_i) ? weight_pipe_array[i][j] : weight_masked_array[i][j];
+                weight_selected[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
+                    (first_operation_sampled | standard_mode_i)
+                    ? weight_pipe[i*BITJ*DATASPIN + j*BITJ +: BITJ]
+                    : weight_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ];
             end
         end
     end
@@ -476,11 +478,10 @@ endgenerate
         hbias_conditional = '0;
         for (int i = 0; i < PARALLELISM; i++) begin
             if (first_operation_sampled || standard_mode_i) begin
-                hbias_conditional_array[i] = hbias_pipe_array[i];
+                hbias_conditional[i*BITH +: BITH] = hbias_pipe[i*BITH +: BITH];
             end else begin
-                hbias_conditional_array[i] = '0;
+                hbias_conditional[i*BITH +: BITH] = '0;
             end
-            hbias_conditional[i*BITH +: BITH] = hbias_conditional_array[i];
         end
     end
     generate
@@ -499,9 +500,9 @@ endgenerate
                 .spin_vector_i(spin_cached),
                 .current_spin_i(current_spin[i]),
                 .weight_i(weight_selected[i*BITJ*DATASPIN +: BITJ*DATASPIN]),
-                .hbias_i(hbias_conditional_array[i]),
-                .hscaling_i(hscaling_pipe_array[i]),
-                .energy_o(local_energy[i*LOCAL_ENERGY_BIT +: LOCAL_ENERGY_BIT])
+                .hbias_i(hbias_conditional[i*BITH +: BITH]),
+                .hscaling_i(hscaling_pipe[i*SCALING_BIT +: SCALING_BIT]),
+                .energy_o(local_energy[i])
             );
         end
     endgenerate
@@ -510,7 +511,7 @@ endgenerate
     always_comb begin
         local_energy_parallel = '0;
         for (int i = 0; i < PARALLELISM; i++) begin
-            local_energy_parallel += (standard_mode_i | first_operation_sampled) ? $signed(local_energy[i*LOCAL_ENERGY_BIT +: LOCAL_ENERGY_BIT]) : 4 * $signed(local_energy[i*LOCAL_ENERGY_BIT +: LOCAL_ENERGY_BIT]);
+            local_energy_parallel += (standard_mode_i | first_operation_sampled) ? $signed(local_energy[i]) : 4 * $signed(local_energy[i]);
         end
     end
     assign accum_data_in = accum_prev_energy_valid ? energy_o_stored : local_energy_parallel;
@@ -544,7 +545,7 @@ endgenerate
                 if (first_operation_sampled || standard_mode_i) begin
                     weight_raddr_em_o[i_weight_raddr] = counter_q / PARALLELISM;
                 end else begin
-                    weight_raddr_em_o[i_weight_raddr] = PARALLELISM * flipped_positions_array[i_weight_raddr][counter_q_diff] + i_weight_raddr;
+                    weight_raddr_em_o[i_weight_raddr] = flipped_positions_array[i_weight_raddr][counter_q_diff] ;
                 end
             end
         end
