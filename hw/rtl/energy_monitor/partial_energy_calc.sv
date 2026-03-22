@@ -36,7 +36,7 @@ module partial_energy_calc #(
     parameter int DATASPIN = 256,
     parameter int SCALING_BIT = 4,
     parameter int PIPES = 0,
-    parameter int MULTBIT = BITH + SCALING_BIT - 1, // bit width of the multiplier output
+    parameter int MULTBIT = BITH + SCALING_BIT, // bit width of the multiplier output
     parameter int LOCAL_ENERGY_BIT = $clog2(DATASPIN) + MULTBIT,
     parameter int DATAJ = DATASPIN * BITJ
     )(
@@ -44,6 +44,8 @@ module partial_energy_calc #(
     input logic rst_ni,
     input logic en_i,
     input logic data_valid_i,
+    input logic standard_mode_i,
+    input logic first_operation_sampled,
     input logic [DATASPIN-1:0] spin_vector_i,
     input logic current_spin_i,
     input logic [DATAJ-1:0] weight_i,
@@ -54,11 +56,14 @@ module partial_energy_calc #(
     // Internal signals
     logic signed [DATASPIN-1:0][MULTBIT-1:0] weight_extended; // sign extended weight
     logic signed [MULTBIT-1:0] hbias_extended; // sign extention of hbias
+    logic signed [MULTBIT-1:0] hbias_extended_real; // sign extention of hbias, used for standard mode
     logic signed [MULTBIT-1:0] hbias_scaled; // scaled hbias
     logic signed [DATASPIN-1:0][MULTBIT-1:0] mult_out; // multiplier output
     logic signed [LOCAL_ENERGY_BIT-1:0] energy_local_wo_hbias; // local energy value without hbias
     logic signed [LOCAL_ENERGY_BIT-1:0] energy_local; // local energy value
+    logic signed [LOCAL_ENERGY_BIT-1:0] energy_local_wo_hbias_real; // local energy value with hbias, used for standard mode
     logic signed [MULTBIT-1:0] hbias_scaled_pipe;
+    logic signed [MULTBIT-1:0] hbias_scaled_pipe_real; // scaled hbias after pipeline, used for standard mode
     logic current_spin_pipe;
 
     // Generate variables
@@ -78,14 +83,15 @@ module partial_energy_calc #(
     // ========================================================================
     // calculate hbias * scaling factor
     assign hbias_extended = {{(MULTBIT-BITH){hbias_i[BITH-1]}}, hbias_i}; // sign extension
+     assign hbias_extended_real = (standard_mode_i | first_operation_sampled) ? hbias_extended : 2 * hbias_extended;
     always_comb begin
         case(hscaling_i)
-            'd1: hbias_scaled = hbias_extended;
-            'd2: hbias_scaled = hbias_extended << 1;
-            'd4: hbias_scaled = hbias_extended << 2;
-            'd8: hbias_scaled = hbias_extended << 3;
-            'd16: hbias_scaled = hbias_extended << 4;
-            default: hbias_scaled = hbias_extended;
+            'd1: hbias_scaled = hbias_extended_real;
+            'd2: hbias_scaled = hbias_extended_real << 1;
+            'd4: hbias_scaled = hbias_extended_real << 2;
+            'd8: hbias_scaled = hbias_extended_real << 3;
+            'd16: hbias_scaled = hbias_extended_real << 4;
+            default: hbias_scaled = hbias_extended_real;
         endcase
     end
 
@@ -127,8 +133,8 @@ module partial_energy_calc #(
         .ready_i(1'b1),
         .ready_o()
     );
-
-    assign energy_local = energy_local_wo_hbias + hbias_scaled_pipe;
+    assign energy_local_wo_hbias_real = (standard_mode_i | first_operation_sampled) ? energy_local_wo_hbias : 4 * energy_local_wo_hbias; 
+    assign energy_local = energy_local_wo_hbias_real + hbias_scaled_pipe;
 
     // ========================================================================
     // Multiply with current spin

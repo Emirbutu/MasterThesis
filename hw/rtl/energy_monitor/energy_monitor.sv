@@ -48,12 +48,9 @@
 // -- All spins are 1, all weights are +7, hbias=+7, hscaling=16, 20 same cases
 // -- All spins are 0, all weights are -7, hbias=-7, hscaling=16, 20 same cases
 // -- All spins and weights are random, hbias and hscaling are random, 1,000,000 different cases
-
 //Emirhan Notes: When we calculate the energy difference with some of the J columns, the biases of the other columns are not considered. Might need to fix that.
 //First operation might be created when enable signal becomes high but need to know how we use enable signal exactly
-
 `include "../include/registers.svh"
-
 `define True 1'b1
 `define False 1'b0
 `define LOG2UP(x)   (((x) > 1) ? $clog2(x) : 1)
@@ -67,7 +64,7 @@ module energy_monitor #(
     parameter int LITTLE_ENDIAN = `True,
     parameter int PIPESINTF = 0,
     parameter int PIPESMID = 0,
-    parameter int LOCAL_ENERGY_BIT = $clog2(DATASPIN) + BITH + SCALING_BIT - 1,
+    parameter int LOCAL_ENERGY_BIT = $clog2(DATASPIN) + BITH + SCALING_BIT ,
     parameter int DATAJ = DATASPIN * BITJ * PARALLELISM,
     parameter int DATAH = BITH * PARALLELISM,
     parameter int DATASCALING = SCALING_BIT * PARALLELISM,
@@ -107,15 +104,12 @@ module energy_monitor #(
     logic config_valid_pipe;
     logic [SPINIDX_BIT-1:0] config_counter_pipe;
     logic config_ready_pipe;
-
     logic [DATASPIN-1:0] spin_pipe;
     logic spin_valid_pipe;
-    logic [3:0] spin_valid_pipe_sampled;
     logic spin_ready_pipe;
-
     logic [DATAJ-1:0] weight_pipe;
     logic signed [DATAH-1:0] hbias_pipe;
-    logic signed [DATAH-1:0] hbias_conditional;
+    logic signed [DATAH-1:0] hbias_i_masked;
     logic unsigned [DATASCALING-1:0] hscaling_pipe;
     logic weight_valid_pipe;
     logic weight_ready_pipe;
@@ -150,7 +144,6 @@ module energy_monitor #(
     logic [PARALLELISM-1:0][BITS_PER_CHUNK-1:0] flipped_valid_array;
     logic [PARALLELISM-1:0][BITS_PER_CHUNK-1:0][`LOG2UP(BITS_PER_CHUNK)-1:0] flipped_positions_array;
     logic [PARALLELISM-1:0][BITS_PER_CHUNK-1:0] spin_flipped_interleaved_array;
-
     // handshake signals
     logic accum_prev_energy_valid;
     logic spin_handshake;
@@ -161,8 +154,6 @@ module energy_monitor #(
     logic energy_handshake;
     logic [PIPESMID:0] weight_handshake_accum;
   
-
-
     genvar i,j;
     genvar i_weight_raddr;
 
@@ -173,18 +164,22 @@ module energy_monitor #(
             end
         end
     endgenerate
+    `FFL(spin_handshake_d, spin_handshake, 1'b1, 1'b0, clk_i, rst_ni);
+    `FFLARNC(first_operation_sampled, 1'b1, first_operation_i, energy_handshake, 1'b0, clk_i, rst_ni)
+    `FF(energy_valid_o_d, energy_valid_o, 1'b0, clk_i, rst_ni)
+    `FFL(energy_o_stored, energy_o, energy_valid_o_pulse, 1'b0, clk_i, rst_ni)
 
     assign counter_spin_o = counter_q;
     assign spin_handshake = spin_valid_pipe && spin_ready_pipe;
-    `FFL(spin_handshake_d, spin_handshake, 1'b1, 1'b0, clk_i, rst_ni);
     assign spin_handshake_pulse = spin_handshake && !spin_handshake_d;
-
     assign weight_handshake = weight_valid_pipe && weight_ready_pipe;
     assign energy_handshake = energy_valid_o && energy_ready_i;
     assign weight_handshake_accum[0] = weight_handshake;
     assign energy_valid_o_pulse = energy_valid_o & ~energy_valid_o_d;
     //Might need to use spin_ready_o signal of the control unit
     assign accum_prev_energy_valid = spin_handshake_pulse && !first_operation_sampled && !standard_mode_i;
+    assign accum_data_in = accum_prev_energy_valid ? energy_o_stored : local_energy_parallel;
+    assign accum_valid_in = accum_prev_energy_valid || weight_handshake_accum[PIPESMID];
     generate
         for (i = 0; i < PIPESMID; i++) begin: gen_weight_handshake_accum
             `FFL(weight_handshake_accum[i+1], weight_handshake_accum[i], en_i, 1'b0, clk_i, rst_ni);
@@ -247,23 +242,29 @@ module energy_monitor #(
             end
         end
     end
+     always_comb begin
+        hbias_i_masked = '0;
+        for (int i = 0; i < PARALLELISM; i++) begin
+            if (first_operation_sampled || standard_mode_i) begin
+               hbias_i_masked[i*BITH +: BITH] = hbias_i[i*BITH +: BITH];
+            end else begin
+               hbias_i_masked[i*BITH +: BITH] =(!flipped_valid_array[i][counter_q_diff]) ? '0 : hbias_i[i*BITH +: BITH];
+            end
+        end
+    end
     bp_pipe #(
         .DATAW(DATAJ + DATAH + DATASCALING),
         .PIPES(PIPESINTF)
     ) u_pipe_weight (
         .clk_i(clk_i),
         .rst_ni(rst_ni),
-        .data_i({weight_i_masked, hbias_i, hscaling_i}),
+        .data_i({weight_i_masked, hbias_i_masked, hscaling_i}),
         .data_o({weight_pipe, hbias_pipe, hscaling_pipe}),
         .valid_i(weight_valid_i),
         .valid_o(weight_valid_pipe),
         .ready_i(weight_ready_pipe),
         .ready_o(weight_ready_o)
     );
-    // `FF(weight_ready_pipe_sampled[0], weight_ready_pipe, 1'b0, clk_i, rst_ni)
-    //`FF(weight_ready_pipe_sampled[1], weight_ready_pipe_sampled[0], 1'b0, clk_i, rst_ni)
-    //`FF(weight_ready_pipe_sampled[2], weight_ready_pipe_sampled[1], 1'b0, clk_i, rst_ni)
-
     // Logic FSM
     logic_ctrl #(
         .PIPESMID(PIPESMID)
@@ -286,7 +287,7 @@ module energy_monitor #(
         .energy_ready_i(energy_ready_i),
         .debug_en_i(1'b0) // disable debug_en_i
     );
-    //.cmpt_done_i((standard_mode_i | first_operation_sampled) ? cmpt_done : cmpt_done_diff), deleted
+    
     // Counter path
     step_counter #(
         .COUNTER_BITWIDTH(SPINIDX_BIT),
@@ -302,8 +303,8 @@ module energy_monitor #(
         .q_o(counter_q),
         .overflow_o(counter_ready)
     );
-    //Todo: need to ensure  the connections of the new counter;config_valid
-      // Counter path for energy difference calculation
+
+    // Counter path for energy difference calculation
     step_counter #(
         .COUNTER_BITWIDTH($clog2(DATASPIN/PARALLELISM+1)),
         .PARALLELISM(1) // Always 1 
@@ -318,9 +319,6 @@ module energy_monitor #(
         .q_o(counter_q_diff),
         .overflow_o(counter_ready_diff)
     );
-
-
-
 
     // Spin path
     vector_caching #(
@@ -370,7 +368,6 @@ module energy_monitor #(
             );
         end
     endgenerate
-   
     // Find maximum flipped count
     find_max #(
         .N(PARALLELISM),
@@ -412,11 +409,6 @@ module energy_monitor #(
     end
 endgenerate
 
-    // ToDo: I can sort the flipped spins bank by bank to reduce conflict misses
-
-    // Mask weights with spin_unflipped bits
-    // For each parallel unit, mask its weight array based on flipped spins
-    // Mask all weights for a spin if that spin is flipped
     always_comb begin
         for (int j = 0; j < DATASPIN; j++) begin
             for (int i = 0; i < PARALLELISM; i++) begin
@@ -437,8 +429,7 @@ endgenerate
             end
         end
     end
-    // Todo : For nonstandard mode; need to do correct mapping of spin_cached and counter_q_diff
-    // N-to-PARALLELISM mux for a vector
+
     generate
         for (genvar i = 0; i < PARALLELISM; i++) begin: gen_current_spin_raw
             if (LITTLE_ENDIAN == `True) begin
@@ -471,19 +462,9 @@ endgenerate
             end
         end
     endgenerate
-
     // Energy calculation and accumulation
     // Conditionally zero hbias if not first_operation or standard_mode
-    always_comb begin
-        hbias_conditional = '0;
-        for (int i = 0; i < PARALLELISM; i++) begin
-            if (first_operation_sampled || standard_mode_i) begin
-                hbias_conditional[i*BITH +: BITH] = hbias_pipe[i*BITH +: BITH];
-            end else begin
-                hbias_conditional[i*BITH +: BITH] = '0;
-            end
-        end
-    end
+
     generate
         for (i = 0; i < PARALLELISM; i = i + 1) begin: partial_energy_calc_inst
             partial_energy_calc #(
@@ -496,11 +477,13 @@ endgenerate
                 .clk_i(clk_i),
                 .rst_ni(rst_ni),
                 .en_i(en_i),
+                .standard_mode_i(standard_mode_i),
+                .first_operation_sampled(first_operation_sampled),
                 .data_valid_i(weight_handshake),
                 .spin_vector_i(spin_cached),
                 .current_spin_i(current_spin[i]),
                 .weight_i(weight_selected[i*BITJ*DATASPIN +: BITJ*DATASPIN]),
-                .hbias_i(hbias_conditional[i*BITH +: BITH]),
+                .hbias_i(hbias_pipe[i*BITH +: BITH]),
                 .hscaling_i(hscaling_pipe[i*SCALING_BIT +: SCALING_BIT]),
                 .energy_o(local_energy[i])
             );
@@ -511,11 +494,10 @@ endgenerate
     always_comb begin
         local_energy_parallel = '0;
         for (int i = 0; i < PARALLELISM; i++) begin
-            local_energy_parallel += (standard_mode_i | first_operation_sampled) ? $signed(local_energy[i]) : 4 * $signed(local_energy[i]);
+            local_energy_parallel +=  $signed(local_energy[i]);
         end
     end
-    assign accum_data_in = accum_prev_energy_valid ? energy_o_stored : local_energy_parallel;
-    assign accum_valid_in = accum_prev_energy_valid || weight_handshake_accum[PIPESMID];
+
     // Accumulator
     accumulator #(
         .IN_WIDTH(ENERGY_TOTAL_BIT ),// Changed the input bit width to since we accumulate the stored energy
@@ -531,13 +513,7 @@ endgenerate
         .overflow_o(),
         .valid_o(cmpt_done)
     );
-    // sets to 1 on  first_operation_i, clears on energy_handshake
-    `FFLARNC(first_operation_sampled, 1'b1, first_operation_i, energy_handshake, 1'b0, clk_i, rst_ni)
-    // Generate a one-cycle pulse on energy_valid_o to load energy_o using a register
-    `FF(energy_valid_o_d, energy_valid_o, 1'b0, clk_i, rst_ni)
-    `FFL(energy_o_stored, energy_o, energy_valid_o_pulse, 1'b0, clk_i, rst_ni)
    
-
     // Assign weight_raddr_em_o for each parallel unit (at end of module)
     generate
         for (i_weight_raddr = 0; i_weight_raddr < PARALLELISM; i_weight_raddr = i_weight_raddr + 1) begin : gen_weight_raddr_em_o

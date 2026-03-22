@@ -24,6 +24,39 @@
         end
     endfunction
 
+    function automatic logic [SCALING_BIT-1:0] select_hscaling(input int idx);
+        begin
+            case (idx)
+                0: select_hscaling = 'd1;
+                1: select_hscaling = (SCALING_BIT >= 2) ? 'd2 : 'd1;
+                2: select_hscaling = (SCALING_BIT >= 3) ? 'd4 : 'd1;
+                3: select_hscaling = (SCALING_BIT >= 4) ? 'd8 : 'd1;
+                default: select_hscaling = (SCALING_BIT >= 5) ? 'd16 : 'd1;
+            endcase
+        end
+    endfunction
+
+    function automatic logic signed [ENERGY_TOTAL_BIT-1:0] scale_hbias_ref(
+        input logic signed [BITH-1:0] hbias_raw,
+        input logic [SCALING_BIT-1:0] hscaling_raw
+    );
+        localparam int HBMULBIT = BITH + SCALING_BIT - 1;
+        logic signed [HBMULBIT-1:0] hbias_ext;
+        logic signed [HBMULBIT-1:0] hbias_scaled;
+        begin
+            hbias_ext = {{(HBMULBIT-BITH){hbias_raw[BITH-1]}}, hbias_raw};
+            case (hscaling_raw)
+                'd1: hbias_scaled = hbias_ext;
+                'd2: hbias_scaled = hbias_ext <<< 1;
+                'd4: hbias_scaled = hbias_ext <<< 2;
+                'd8: hbias_scaled = hbias_ext <<< 3;
+                'd16: hbias_scaled = hbias_ext <<< 4;
+                default: hbias_scaled = hbias_ext;
+            endcase
+            scale_hbias_ref = $signed(hbias_scaled);
+        end
+    endfunction
+
     task automatic write_sram_word(
         input int bank_idx,
         input int addr_idx,
@@ -48,7 +81,11 @@
     task automatic init_all_srams(input init_mode_t mode);
         logic [SRAM_DWIDTH-1:0] write_data;
         logic signed [BITJ-1:0] j_matrix [0:DATASPIN-1][0:DATASPIN-1];
+        logic signed [BITH-1:0] hbias_vec [0:DATASPIN-1];
+        logic [SCALING_BIT-1:0] hscaling_vec [0:DATASPIN-1];
         logic signed [BITJ-1:0] w_tmp;
+        logic signed [BITH-1:0] h_tmp;
+        logic [SCALING_BIT-1:0] hs_tmp;
         int row;
         int col;
         int bank;
@@ -87,7 +124,38 @@
         end
 
         // --------------------------------------------------------------------
-        // 2) Pack each column into SRAM words and write bank/address
+        // 2) Build hbias/scaling vectors per column
+        // --------------------------------------------------------------------
+        for (col = 0; col < DATASPIN; col++) begin
+            case (mode)
+                INIT_ALL_ONES: begin
+                    h_tmp = {{(BITH-1){1'b0}}, 1'b1};
+                    hs_tmp = 'd1;
+                end
+                INIT_ADDR_PATTERN: begin
+                    // Deterministic positive hbias per column: 0,1,2,...
+                    // (for DATASPIN=256 this maps through 255).
+                    h_tmp = $signed(col);
+                    // Fixed scaling factor = 1 for address-pattern mode.
+                    hs_tmp = 'd1;
+                end
+                INIT_RANDOM: begin
+                    h_tmp = $signed($urandom_range(0, (1 << BITH) - 1));
+                    hs_tmp = select_hscaling($urandom_range(0, 4));
+                end
+                default: begin
+                    h_tmp = '0;
+                    hs_tmp = 'd1;
+                end
+            endcase
+            hbias_vec[col] = h_tmp;
+            hscaling_vec[col] = hs_tmp;
+            // hbias_vec[col] = '0;
+            // hscaling_vec[col] = 'd1;
+        end
+
+        // --------------------------------------------------------------------
+        // 3) Pack each column into SRAM words and write bank/address
         //    col -> bank = col % PARALLELISM, addr = col / PARALLELISM
         // --------------------------------------------------------------------
         for (col = 0; col < DATASPIN; col++) begin
@@ -97,6 +165,8 @@
             for (row = 0; row < DATASPIN; row++) begin
                 write_data[row*BITJ +: BITJ] = j_matrix[row][col];
             end
+            write_data[SRAM_HBIAS_LSB +: BITH] = hbias_vec[col];
+            write_data[SRAM_HSCALING_LSB +: SCALING_BIT] = hscaling_vec[col];
             write_sram_word(bank, addr, write_data);
         end
 
@@ -141,12 +211,24 @@
     // Total reference energy latched after each check_energy_vs_ref call.
     logic signed [ENERGY_TOTAL_BIT-1:0] energy_ref_total;
 
+    // Mirrors DUT first-operation sampled behavior for hbias gating.
+    logic ref_first_operation_sampled;
+
     // Capture the spin vector at every DUT-accepted spin handshake.
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni)
             spin_snapshot <= '0;
         else if (spin_valid_i && spin_ready_o)
             spin_snapshot <= spin_i;
+    end
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+        if (!rst_ni)
+            ref_first_operation_sampled <= 1'b0;
+        else if (first_operation_i)
+            ref_first_operation_sampled <= 1'b1;
+        else if (energy_valid_o && energy_ready_i)
+            ref_first_operation_sampled <= 1'b0;
     end
 
     // -------------------------------------------------------------------------
@@ -166,7 +248,7 @@
     //   E          = sum_j local_e[j]
     //
     // Spin encoding: bit = 1 -> sigma = +1,  bit = 0 -> sigma = -1.
-    // hbias and hscaling are intentionally excluded (assumed zero).
+    // hbias and hscaling are packed in SRAM and applied like DUT.
     //
     // Side-effect: populates local_energy_col_ref[j] for waveform visibility.
     // -------------------------------------------------------------------------
@@ -176,8 +258,11 @@
         logic signed [ENERGY_TOTAL_BIT-1:0] total_accum;
         logic signed [ENERGY_TOTAL_BIT-1:0] col_dot;
         logic signed [ENERGY_TOTAL_BIT-1:0] group_accum;
+        logic signed [ENERGY_TOTAL_BIT-1:0] hbias_scaled;
         logic [SRAM_DWIDTH-1:0]             sram_word;
         logic signed [BITJ-1:0]             j_val;
+        logic signed [BITH-1:0]             hbias_val;
+        logic [SCALING_BIT-1:0]             hscaling_val;
         logic                               s_col, s_row;
         int                                 bank_idx, addr_idx, col_idx, row_idx, group_idx, bank_in_group;
         begin
@@ -186,7 +271,10 @@
                 bank_idx  = col_idx % PARALLELISM;
                 addr_idx  = col_idx / PARALLELISM;
                 sram_word = read_sram_word(bank_idx, addr_idx);
-
+                hbias_val = $signed(sram_word[SRAM_HBIAS_LSB +: BITH]);
+                hscaling_val = sram_word[SRAM_HSCALING_LSB +: SCALING_BIT];
+                hbias_scaled = scale_hbias_ref(hbias_val, hscaling_val);
+                           
                 s_col = (LITTLE_ENDIAN == `True) ? spin_vec[col_idx]
                                                  : spin_vec[DATASPIN - 1 - col_idx];
                 col_dot = '0;
@@ -201,7 +289,8 @@
                 end
 
                 // local energy for this column; written for waveform visibility
-                local_energy_col_ref[col_idx] = s_col ? col_dot : -col_dot;
+                local_energy_col_ref[col_idx] = s_col ? (col_dot + hbias_scaled)
+                                                     : -(col_dot + hbias_scaled);
                 total_accum += local_energy_col_ref[col_idx];
             end
 
