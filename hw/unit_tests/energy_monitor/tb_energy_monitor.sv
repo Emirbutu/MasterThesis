@@ -50,7 +50,7 @@
 `endif
 
 `ifndef SRAM_RD_LATENCY // valid only when SRAM_READ_COMB=0
-`define SRAM_RD_LATENCY 1
+`define SRAM_RD_LATENCY 3
 `endif
 
 module tb_energy_monitor;
@@ -303,7 +303,7 @@ module tb_energy_monitor;
             $display("Debug mode enabled. Generating VCD waveform.");
             $dumpfile(`VCD_FILE);
             $dumpvars(2, tb_energy_monitor);
-            #(200 * CLKCYCLE); // To avoid generating too large VCD files
+            #(350 * CLKCYCLE); // To avoid generating too large VCD files
             $fatal(1, "Testbench timeout reached. Ending simulation.");
         end
         else begin

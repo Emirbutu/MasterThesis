@@ -107,8 +107,6 @@ module energy_monitor #(
     logic [DATASPIN-1:0] spin_pipe;
     logic spin_valid_pipe;
     logic spin_ready_pipe;
-    logic weight_ready_raw;
-    logic weight_req_pending_q;
     logic [DATAJ-1:0] weight_pipe;
     logic signed [DATAH-1:0] hbias_pipe;
     logic signed [DATAH-1:0] hbias_i_masked;
@@ -175,7 +173,6 @@ module energy_monitor #(
     assign spin_handshake = spin_valid_pipe && spin_ready_pipe;
     assign spin_handshake_pulse = spin_handshake && !spin_handshake_d;
     assign weight_handshake = weight_valid_pipe && weight_ready_pipe;
-    assign weight_ready_o = weight_ready_raw && !weight_req_pending_q;
     assign energy_handshake = energy_valid_o && energy_ready_i;
     assign weight_handshake_accum[0] = weight_handshake;
     assign energy_valid_o_pulse = energy_valid_o & ~energy_valid_o_d;
@@ -266,20 +263,8 @@ module energy_monitor #(
         .valid_i(weight_valid_i),
         .valid_o(weight_valid_pipe),
         .ready_i(weight_ready_pipe),
-        .ready_o(weight_ready_raw)
+        .ready_o(weight_ready_o)
     );
-
-    always_ff @(posedge clk_i or negedge rst_ni) begin
-        if (!rst_ni) begin
-            weight_req_pending_q <= 1'b0;
-        end else begin
-            if (weight_valid_i) begin
-                weight_req_pending_q <= 1'b0;
-            end else if (weight_ready_raw && !weight_req_pending_q) begin
-                weight_req_pending_q <= 1'b1;
-            end
-        end
-    end
     // Logic FSM
     logic_ctrl #(
         .PIPESMID(PIPESMID)
