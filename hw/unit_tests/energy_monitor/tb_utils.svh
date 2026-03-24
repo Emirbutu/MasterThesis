@@ -11,10 +11,10 @@
     );
         begin
             case (bank_idx)
-                0: read_sram_word = sram_banks[0].u_sram.memory[addr_idx];
-                1: read_sram_word = sram_banks[1].u_sram.memory[addr_idx];
-                2: read_sram_word = sram_banks[2].u_sram.memory[addr_idx];
-                3: read_sram_word = sram_banks[3].u_sram.memory[addr_idx];
+                0: read_sram_word = sram_banks[0].u_sram.sram[addr_idx];
+                1: read_sram_word = sram_banks[1].u_sram.sram[addr_idx];
+                2: read_sram_word = sram_banks[2].u_sram.sram[addr_idx];
+                3: read_sram_word = sram_banks[3].u_sram.sram[addr_idx];
             //    4: read_sram_word = sram_banks[4].u_sram.memory[addr_idx];
             //    5: read_sram_word = sram_banks[5].u_sram.memory[addr_idx];
             //    6: read_sram_word = sram_banks[6].u_sram.memory[addr_idx];
@@ -64,10 +64,10 @@
     );
         begin
             case (bank_idx)
-                0: sram_banks[0].u_sram.memory[addr_idx] = data_i;
-                1: sram_banks[1].u_sram.memory[addr_idx] = data_i;
-                2: sram_banks[2].u_sram.memory[addr_idx] = data_i;
-                3: sram_banks[3].u_sram.memory[addr_idx] = data_i;
+                0: sram_banks[0].u_sram.sram[addr_idx] = data_i;
+                1: sram_banks[1].u_sram.sram[addr_idx] = data_i;
+                2: sram_banks[2].u_sram.sram[addr_idx] = data_i;
+                3: sram_banks[3].u_sram.sram[addr_idx] = data_i;
             //    4: sram_banks[4].u_sram.memory[addr_idx] = data_i;
             //    5: sram_banks[5].u_sram.memory[addr_idx] = data_i;
             //    6: sram_banks[6].u_sram.memory[addr_idx] = data_i;

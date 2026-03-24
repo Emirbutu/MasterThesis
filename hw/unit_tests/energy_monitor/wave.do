@@ -1,16 +1,11 @@
 onerror {resume}
-quietly virtual signal -install /tb_energy_monitor/dut { /tb_energy_monitor/dut/hbias_i[15:12]} H3
-quietly virtual signal -install /tb_energy_monitor/dut { /tb_energy_monitor/dut/hbias_i[11:8]} H2
-quietly virtual signal -install /tb_energy_monitor/dut { /tb_energy_monitor/dut/hbias_i[7:4]} H2001
-quietly virtual signal -install /tb_energy_monitor/dut { /tb_energy_monitor/dut/hbias_i[3:0]} H0
 quietly WaveActivateNextPane {} 0
-add wave -noupdate -label H3 -radix unsigned /tb_energy_monitor/dut/H3
-add wave -noupdate -label H2 -radix unsigned /tb_energy_monitor/dut/H2
-add wave -noupdate -label H1 -radix unsigned /tb_energy_monitor/dut/H2001
-add wave -noupdate -label H0 -radix unsigned /tb_energy_monitor/dut/H0
+add wave -noupdate /tb_energy_monitor/dut/weight_valid_i
+add wave -noupdate /tb_energy_monitor/dut/weight_i
+add wave -noupdate /tb_energy_monitor/dut/clk_i
 TreeUpdate [SetDefaultTree]
-WaveRestoreCursors {{Cursor 1} {0 ps} 0}
-quietly wave cursor active 0
+WaveRestoreCursors {{Cursor 1} {55000 ps} 0}
+quietly wave cursor active 1
 configure wave -namecolwidth 150
 configure wave -valuecolwidth 100
 configure wave -justifyvalue left
@@ -25,4 +20,4 @@ configure wave -griddelta 40
 configure wave -timeline 0
 configure wave -timelineunits ns
 update
-WaveRestoreZoom {44160 ps} {60640 ps}
+WaveRestoreZoom {37498 ps} {90855 ps}

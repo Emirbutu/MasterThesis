@@ -50,7 +50,7 @@
 `endif
 
 `ifndef SRAM_RD_LATENCY // valid only when SRAM_READ_COMB=0
-`define SRAM_RD_LATENCY 0
+`define SRAM_RD_LATENCY 1
 `endif
 
 module tb_energy_monitor;
@@ -122,6 +122,9 @@ module tb_energy_monitor;
     logic [PARALLELISM-1:0] sram_cs;
     logic [PARALLELISM-1:0] sram_we;
     logic [PARALLELISM-1:0] sram_valid;
+    logic [PARALLELISM-1:0] sram_read_req;
+    localparam int SRAM_VALID_LAT = MEM_READ_COMB ? 0 : ((MEM_LATENCY > 0) ? MEM_LATENCY : 1);
+    logic [PARALLELISM-1:0][SRAM_VALID_LAT-1:0] sram_valid_pipe;
      `include "tb_utils.svh"
 // Module instantiation
     energy_monitor #(
@@ -162,22 +165,36 @@ module tb_energy_monitor;
     genvar i;
     generate
         for (i = 0; i < PARALLELISM; i++) begin : sram_banks
-            tc_sram #(
-                .Latency(MEM_LATENCY),
-                .READ_COMB(MEM_READ_COMB),
-                .DWIDTH(SRAM_DWIDTH),
-                .DEPTH(SRAM_DEPTH),
-                .AWIDTH(SRAM_AWIDTH),
-                .DWIDTHB(SRAM_DWIDTHB)
+            logic [0:0] req_1p;
+            logic [0:0] we_1p;
+            logic [0:0][SRAM_AWIDTH-1:0] addr_1p;
+            logic [0:0][SRAM_DWIDTH-1:0] wdata_1p;
+            logic [0:0][SRAM_DWIDTHB-1:0] be_1p;
+            logic [0:0][SRAM_DWIDTH-1:0] rdata_1p;
+
+            assign req_1p[0] = sram_cs[i];
+            assign we_1p[0] = sram_we[i];
+            assign addr_1p[0] = sram_addr[i];
+            assign wdata_1p[0] = sram_wdata[i];
+            assign be_1p[0] = sram_be[i];
+            assign sram_rdata[i] = rdata_1p[0];
+
+            tc_sram_eth #(
+                .NumWords(SRAM_DEPTH),
+                .DataWidth(SRAM_DWIDTH),
+                .ByteWidth(8),
+                .NumPorts(1),
+                .Latency(MEM_READ_COMB ? 0 : MEM_LATENCY),
+                .SimInit("none")
             ) u_sram (
                 .clk_i(clk_i),
-                .addr_i(sram_addr[i]),
-                .rdata_o(sram_rdata[i]),
-                .valid_o(sram_valid[i]),
-                .wdata_i(sram_wdata[i]),
-                .be_i(sram_be[i]),
-                .cs_i(sram_cs[i]),
-                .we_i(sram_we[i])
+                .rst_ni(rst_ni),
+                .req_i(req_1p),
+                .we_i(we_1p),
+                .addr_i(addr_1p),
+                .wdata_i(wdata_1p),
+                .be_i(be_1p),
+                .rdata_o(rdata_1p)
             );
         end
     endgenerate
@@ -187,7 +204,7 @@ module tb_energy_monitor;
     generate
         for (i = 0; i < PARALLELISM; i++) begin : sram_addr_connect
             assign sram_addr[i] = weight_raddr_em_o[i];
-            assign sram_cs[i] = weight_ready_o;  // DUT controls when to read
+            assign sram_cs[i] = weight_ready_o;
             assign sram_we[i] = 1'b0;            // Read-only mode
             assign sram_be[i] = '1;              // All bytes enabled
             assign sram_wdata[i] = '0;           // Not writing
@@ -204,6 +221,30 @@ module tb_energy_monitor;
                 sram_rdata[i][SRAM_HBIAS_LSB +: BITH];
             assign hscaling_i[i*SCALING_BIT +: SCALING_BIT] =
                 sram_rdata[i][SRAM_HSCALING_LSB +: SCALING_BIT];
+        end
+    endgenerate
+
+    // Recreate valid_o behavior locally for tc_sram_eth
+    generate
+        if (MEM_READ_COMB) begin : gen_sram_valid_comb
+            for (i = 0; i < PARALLELISM; i++) begin : gen_sram_valid_comb_bank
+                assign sram_valid[i] = sram_cs[i] && ~sram_we[i];
+            end
+        end else begin : gen_sram_valid_sync
+            for (i = 0; i < PARALLELISM; i++) begin : gen_sram_valid_sync_bank
+                assign sram_read_req[i] = sram_cs[i] && ~sram_we[i];
+                always_ff @(posedge clk_i or negedge rst_ni) begin
+                    if (!rst_ni) begin
+                        sram_valid_pipe[i] <= '0;
+                    end else begin
+                        sram_valid_pipe[i][0] <= sram_read_req[i];
+                        for (int d = 1; d < SRAM_VALID_LAT; d++) begin
+                            sram_valid_pipe[i][d] <= sram_valid_pipe[i][d-1];
+                        end
+                    end
+                end
+                assign sram_valid[i] = sram_valid_pipe[i][SRAM_VALID_LAT-1];
+            end
         end
     endgenerate
 

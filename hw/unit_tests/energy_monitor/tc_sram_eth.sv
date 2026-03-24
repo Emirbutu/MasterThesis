@@ -53,7 +53,7 @@
 //                       `rdata_o` when `req_i` and `we_i` are asserted. The output data is stable
 //                       on write requests.
 
-module tc_sram #(
+module tc_sram_eth #(
   parameter int unsigned NumWords     = 32'd1024, // Number of Words in data array
   parameter int unsigned DataWidth    = 32'd128,  // Data signal width
   parameter int unsigned ByteWidth    = 32'd8,    // Width of a data byte

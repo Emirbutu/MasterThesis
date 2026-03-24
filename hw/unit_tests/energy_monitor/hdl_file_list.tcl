@@ -7,7 +7,7 @@ set HDL_PATH ../../rtl
 
 set HDL_FILES [ list \
     "./tb_energy_monitor.sv" \
-    "./tc_scram.sv" \
+    "./tc_sram_eth.sv" \
     "${HDL_PATH}/energy_monitor/energy_monitor.sv" \
     "${HDL_PATH}/lib/bp_pipe.sv" \
     "${HDL_PATH}/include/registers.svh" \
