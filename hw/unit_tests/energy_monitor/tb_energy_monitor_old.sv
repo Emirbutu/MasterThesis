@@ -824,46 +824,12 @@ endmodule
         // ========================================================================
     // Debug mirrors for DUT internal unpacked arrays (waveform visibility)
     // ========================================================================
-    logic signed [BITH-1:0] tb_hbias_pipe_array [0:`PARALLELISM-1];
-    logic [SCALING_BIT-1:0] tb_hscaling_pipe_array [0:`PARALLELISM-1];
-    logic signed [BITJ-1:0] tb_weight_i_array [0:`PARALLELISM-1][0:DATASPIN-1];
-    logic signed [BITJ-1:0] tb_weight_pipe_array [0:`PARALLELISM-1][0:DATASPIN-1];
-    logic signed [BITJ-1:0] tb_weight_i_masked_array [0:`PARALLELISM-1][0:DATASPIN-1];
-    logic signed [BITJ-1:0] tb_weight_masked_array [0:`PARALLELISM-1][0:DATASPIN-1];
-    logic signed [BITJ-1:0] tb_weight_selected_array [0:`PARALLELISM-1][0:DATASPIN-1];
 
-    generate
-        for (genvar i_dbg = 0; i_dbg < `PARALLELISM; i_dbg++) begin : gen_dbg_unpack_arrays
-            assign tb_hbias_pipe_array[i_dbg] = dut.hbias_pipe_array[i_dbg];
-            assign tb_hscaling_pipe_array[i_dbg] = dut.hscaling_pipe_array[i_dbg];
-            for (genvar j_dbg = 0; j_dbg < DATASPIN; j_dbg++) begin : gen_dbg_unpack_per_spin
-                assign tb_weight_i_array[i_dbg][j_dbg] = dut.weight_i_array[i_dbg][j_dbg];
-                assign tb_weight_pipe_array[i_dbg][j_dbg] = dut.weight_pipe_array[i_dbg][j_dbg];
-                assign tb_weight_i_masked_array[i_dbg][j_dbg] = dut.weight_i_masked_array[i_dbg][j_dbg];
-                assign tb_weight_masked_array[i_dbg][j_dbg] = dut.weight_masked_array[i_dbg][j_dbg];
-                assign tb_weight_selected_array[i_dbg][j_dbg] = dut.weight_selected_array[i_dbg][j_dbg];
-            end
-        end
-    endgenerate
+
     // ========================================================================
     // Per-element scalar probes (one signal per J element) — uncommented view
     // Creates hierarchical signals: tb_energy_monitor.tb_unit[i].tb_elem[j].tb_w_selected
-    // ========================================================================
-    generate
-        for (genvar i_unit = 0; i_unit < PARALLELISM; i_unit++) begin : tb_unit
-            for (genvar j_el = 0; j_el < DATASPIN; j_el++) begin : tb_elem
-                logic signed [BITJ-1:0] tb_w_selected;
-                logic signed [BITJ-1:0] tb_w_masked;
-                logic signed [BITJ-1:0] tb_w_pipe;
-                logic signed [BITJ-1:0] tb_w_i;
-
-                assign tb_w_selected = dut.weight_selected_array[i_unit][j_el];
-                assign tb_w_masked   = dut.weight_masked_array[i_unit][j_el];
-                assign tb_w_pipe     = dut.weight_pipe_array[i_unit][j_el];
-                assign tb_w_i        = dut.weight_i_array[i_unit][j_el];
-            end
-        end
-    endgenerate
+    
     // Clock generation
     initial begin
         clk_i = 0;

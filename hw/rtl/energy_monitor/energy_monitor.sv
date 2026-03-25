@@ -119,8 +119,12 @@ module energy_monitor #(
     logic [DATASPIN-1:0] spin_cached_reg;
     logic [SPINIDX_BIT-1:0] counter_q;
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] counter_q_diff;
+    logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] counter_q_sram;
     logic counter_ready;
     logic counter_ready_diff;
+    logic counter_ready_sram;
+    logic counter_load_sram;
+    logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] counter_d_sram;
     logic first_operation_sampled;
     logic max_flipped_count_valid;
     logic energy_valid_o_d;
@@ -153,6 +157,14 @@ module energy_monitor #(
     logic weight_handshake;
     logic energy_handshake;
     logic [PIPESMID:0] weight_handshake_accum;
+    localparam int WEIGHT_PIPE_DATAW = DATAJ + DATAH + DATASCALING;
+
+    logic [PIPESINTF:0][SPINIDX_BIT-1:0] config_counter_pipe_stages;
+    logic [PIPESINTF:0] config_valid_pipe_stages;
+    logic [PIPESINTF:0][DATASPIN-1:0] spin_pipe_stages;
+    logic [PIPESINTF:0] spin_valid_pipe_stages;
+    logic [PIPESINTF:0][WEIGHT_PIPE_DATAW-1:0] weight_pipe_stages;
+    logic [PIPESINTF:0] weight_valid_pipe_stages;
   
     genvar i,j;
     genvar i_weight_raddr;
@@ -168,7 +180,8 @@ module energy_monitor #(
     `FFLARNC(first_operation_sampled, 1'b1, first_operation_i, energy_handshake, 1'b0, clk_i, rst_ni)
     `FF(energy_valid_o_d, energy_valid_o, 1'b0, clk_i, rst_ni)
     `FFL(energy_o_stored, energy_o, energy_valid_o_pulse, 1'b0, clk_i, rst_ni)
-
+    assign spin_ready_o = spin_ready_pipe;
+    assign weight_ready_o = weight_ready_pipe;
     assign counter_spin_o = counter_q;
     assign spin_handshake = spin_valid_pipe && spin_ready_pipe;
     assign spin_handshake_pulse = spin_handshake && !spin_handshake_d;
@@ -186,34 +199,31 @@ module energy_monitor #(
         end
     endgenerate
 
-    // pipeline interfaces
-    bp_pipe #(
-        .DATAW(SPINIDX_BIT),
-        .PIPES(PIPESINTF)
-    ) u_pipe_config (
-        .clk_i(clk_i),
-        .rst_ni(rst_ni),
-        .data_i(config_counter_i),
-        .data_o(config_counter_pipe),
-        .valid_i(config_valid_i),
-        .valid_o(config_valid_pipe),
-        .ready_i(config_ready_pipe),
-        .ready_o(config_ready_o)
-    );
+    // Regular pipelines (global-stall shift registers), replacing bp_pipe
+    assign config_counter_pipe_stages[0] = config_counter_i;
+    assign config_valid_pipe_stages[0] = config_valid_i;
+    assign config_counter_pipe = config_counter_pipe_stages[PIPESINTF];
+    assign config_valid_pipe = config_valid_pipe_stages[PIPESINTF];
+    assign config_ready_o = config_ready_pipe;
 
-    bp_pipe #(
-        .DATAW(DATASPIN),
-        .PIPES(PIPESINTF)
-    ) u_pipe_spin (
-        .clk_i(clk_i),
-        .rst_ni(rst_ni),
-        .data_i(spin_i),
-        .data_o(spin_pipe),
-        .valid_i(spin_valid_i),
-        .valid_o(spin_valid_pipe),
-        .ready_i(spin_ready_pipe),
-        .ready_o(spin_ready_o)
-    );
+    assign spin_pipe_stages[0] = spin_i;
+    assign spin_valid_pipe_stages[0] = spin_valid_i;
+    assign spin_pipe = spin_pipe_stages[PIPESINTF];
+    assign spin_valid_pipe = spin_valid_pipe_stages[PIPESINTF];
+
+    generate
+        if (PIPESINTF > 0) begin : gen_input_pipes
+            for (genvar pipe_idx = 0; pipe_idx < PIPESINTF; pipe_idx++) begin : gen_config_pipe_regs
+                `FFL(config_counter_pipe_stages[pipe_idx+1], config_counter_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
+                `FFL(config_valid_pipe_stages[pipe_idx+1], config_valid_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
+            end
+
+            for (genvar pipe_idx = 0; pipe_idx < PIPESINTF; pipe_idx++) begin : gen_spin_pipe_regs
+                `FFL(spin_pipe_stages[pipe_idx+1], spin_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
+                `FFL(spin_valid_pipe_stages[pipe_idx+1], spin_valid_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
+            end
+        end
+    endgenerate
 
     // Mask only the weights at the fetched positions (using counter_q_diff and valid bits) before the bp_pipe
     
@@ -252,19 +262,19 @@ module energy_monitor #(
             end
         end
     end
-    bp_pipe #(
-        .DATAW(DATAJ + DATAH + DATASCALING),
-        .PIPES(PIPESINTF)
-    ) u_pipe_weight (
-        .clk_i(clk_i),
-        .rst_ni(rst_ni),
-        .data_i({weight_i_masked, hbias_i_masked, hscaling_i}),
-        .data_o({weight_pipe, hbias_pipe, hscaling_pipe}),
-        .valid_i(weight_valid_i),
-        .valid_o(weight_valid_pipe),
-        .ready_i(weight_ready_pipe),
-        .ready_o(weight_ready_o)
-    );
+    assign weight_pipe_stages[0] = {weight_i_masked, hbias_i_masked, hscaling_i};
+    assign weight_valid_pipe_stages[0] = weight_valid_i;
+    assign {weight_pipe, hbias_pipe, hscaling_pipe} = weight_pipe_stages[PIPESINTF];
+    assign weight_valid_pipe = weight_valid_pipe_stages[PIPESINTF];
+
+    generate
+        if (PIPESINTF > 0) begin : gen_weight_pipe
+            for (genvar pipe_idx = 0; pipe_idx < PIPESINTF; pipe_idx++) begin : gen_weight_pipe_regs
+                `FFL(weight_pipe_stages[pipe_idx+1], weight_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
+                `FFL(weight_valid_pipe_stages[pipe_idx+1], weight_valid_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
+            end
+        end
+    endgenerate
     // Logic FSM
     logic_ctrl #(
         .PIPESMID(PIPESMID)
@@ -303,7 +313,6 @@ module energy_monitor #(
         .q_o(counter_q),
         .overflow_o(counter_ready)
     );
-
     // Counter path for energy difference calculation
     step_counter #(
         .COUNTER_BITWIDTH($clog2(DATASPIN/PARALLELISM+1)),
@@ -318,6 +327,32 @@ module energy_monitor #(
         .step_en_i(weight_handshake),
         .q_o(counter_q_diff),
         .overflow_o(counter_ready_diff)
+    );
+
+    always_comb begin
+        if (standard_mode_i || first_operation_sampled) begin
+            counter_load_sram = config_valid_pipe && config_ready_pipe;
+            counter_d_sram = config_counter_pipe / PARALLELISM;
+        end else begin
+            counter_load_sram = max_flipped_count_valid;
+            counter_d_sram = max_flipped_count;
+        end
+    end
+
+     // Counter to control SRAM accesses
+    step_counter #(
+        .COUNTER_BITWIDTH($clog2(DATASPIN/PARALLELISM+1)),
+        .PARALLELISM(1) // Always 1 
+    ) u_step_counter_sram (
+        .clk_i(clk_i),
+        .rst_ni(rst_ni),
+        .en_i(en_i),
+        .load_i(counter_load_sram),
+        .d_i(counter_d_sram),
+        .recount_en_i(spin_handshake),
+        .step_en_i(weight_ready_pipe),
+        .q_o(counter_q_sram),
+        .overflow_o(counter_ready_sram)
     );
 
     // Spin path
@@ -519,9 +554,9 @@ endgenerate
         for (i_weight_raddr = 0; i_weight_raddr < PARALLELISM; i_weight_raddr = i_weight_raddr + 1) begin : gen_weight_raddr_em_o
             always_comb begin
                 if (first_operation_sampled || standard_mode_i) begin
-                    weight_raddr_em_o[i_weight_raddr] = counter_q / PARALLELISM;
+                    weight_raddr_em_o[i_weight_raddr] = counter_q_sram;
                 end else begin
-                    weight_raddr_em_o[i_weight_raddr] = flipped_positions_array[i_weight_raddr][counter_q_diff] ;
+                    weight_raddr_em_o[i_weight_raddr] = flipped_positions_array[i_weight_raddr][counter_q_sram] ;
                 end
             end
         end

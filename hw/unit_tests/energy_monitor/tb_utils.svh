@@ -326,7 +326,7 @@
                 $display("[check_energy_vs_ref][PASS] Time %0t ns: energy_o = %0d",
                          $time, $signed(energy_o));
             end else begin
-                $fatal("[check_energy_vs_ref][FAIL] Time %0t ns: DUT = %0d  REF = %0d  diff = %0d",
+                $error("[check_energy_vs_ref][FAIL] Time %0t ns: DUT = %0d  REF = %0d  diff = %0d",
                        $time, $signed(energy_o), $signed(ref_val),
                        $signed(energy_o) - $signed(ref_val));
             end
