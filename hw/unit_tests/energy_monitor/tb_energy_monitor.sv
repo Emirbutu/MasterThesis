@@ -34,11 +34,11 @@
 `endif
 
 `ifndef NUM_TESTS // number of test cases
-`define NUM_TESTS 10
+`define NUM_TESTS 10000
 `endif
 
 `ifndef PIPESINTF // number of pipeline stages at the input interface
-`define PIPESINTF 0
+`define PIPESINTF 1
 `endif
 
 `ifndef PIPESMID // number of pipeline stages at mid adder tree
@@ -50,7 +50,7 @@
 `endif
 
 `ifndef SRAM_RD_LATENCY // valid only when SRAM_READ_COMB=0
-`define SRAM_RD_LATENCY 5
+`define SRAM_RD_LATENCY 1
 `endif
 
 module tb_energy_monitor;

@@ -137,6 +137,7 @@ module energy_monitor #(
      // Store accumulator output when energy_valid_o is high
     logic signed [ENERGY_TOTAL_BIT-1:0] energy_o_stored;
     logic [DATAJ-1:0] weight_i_masked;
+    logic [DATAJ-1:0] weight_pipe_flipped_masked;
     logic [DATAJ-1:0] weight_masked;
     logic [DATAJ-1:0] weight_selected;
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] flipped_count [PARALLELISM-1:0];
@@ -225,44 +226,7 @@ module energy_monitor #(
         end
     endgenerate
 
-    // Mask only the weights at the fetched positions (using counter_q_diff and valid bits) before the bp_pipe
-    
-    always_comb begin
-        if (!standard_mode_i && !first_operation_sampled) begin
-            for (int i = 0; i < PARALLELISM; i++) begin
-                if (!flipped_valid_array[i][counter_q_diff]) begin
-                    // Mask all weights for this parallel unit
-                    for (int j = 0; j < DATASPIN; j++) begin
-                        weight_i_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] = '0;
-                    end
-                end else begin
-                    // Pass through all weights for this parallel unit
-                    for (int j = 0; j < DATASPIN; j++) begin
-                        weight_i_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
-                            weight_i[i*BITJ*DATASPIN + j*BITJ +: BITJ];
-                    end
-                end
-            end
-        end else begin
-            for (int i = 0; i < PARALLELISM; i++) begin
-                for (int j = 0; j < DATASPIN; j++) begin
-                    weight_i_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
-                        weight_i[i*BITJ*DATASPIN + j*BITJ +: BITJ];
-                end
-            end
-        end
-    end
-     always_comb begin
-        hbias_i_masked = '0;
-        for (int i = 0; i < PARALLELISM; i++) begin
-            if (first_operation_sampled || standard_mode_i) begin
-               hbias_i_masked[i*BITH +: BITH] = hbias_i[i*BITH +: BITH];
-            end else begin
-               hbias_i_masked[i*BITH +: BITH] =(!flipped_valid_array[i][counter_q_diff]) ? '0 : hbias_i[i*BITH +: BITH];
-            end
-        end
-    end
-    assign weight_pipe_stages[0] = {weight_i_masked, hbias_i_masked, hscaling_i};
+    assign weight_pipe_stages[0] = {weight_i, hbias_i, hscaling_i};
     assign weight_valid_pipe_stages[0] = weight_valid_i;
     assign {weight_pipe, hbias_pipe, hscaling_pipe} = weight_pipe_stages[PIPESINTF];
     assign weight_valid_pipe = weight_valid_pipe_stages[PIPESINTF];
@@ -445,10 +409,37 @@ module energy_monitor #(
 endgenerate
 
     always_comb begin
+        for (int i = 0; i < PARALLELISM; i++) begin
+            if (!standard_mode_i && !first_operation_sampled && !flipped_valid_array[i][counter_q_diff]) begin
+                for (int j = 0; j < DATASPIN; j++) begin
+                    weight_pipe_flipped_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] = '0;
+                end
+            end else begin
+                for (int j = 0; j < DATASPIN; j++) begin
+                    weight_pipe_flipped_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
+                        weight_pipe[i*BITJ*DATASPIN + j*BITJ +: BITJ];
+                end
+            end
+        end
+    end
+
+    always_comb begin
         for (int j = 0; j < DATASPIN; j++) begin
             for (int i = 0; i < PARALLELISM; i++) begin
                 weight_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
-                    spin_unflipped[j] ? weight_pipe[i*BITJ*DATASPIN + j*BITJ +: BITJ] : '0;
+                    spin_unflipped[j] ? weight_pipe_flipped_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] : '0;
+            end
+        end
+    end
+
+    always_comb begin
+        hbias_i_masked = '0;
+        for (int i = 0; i < PARALLELISM; i++) begin
+            if (first_operation_sampled || standard_mode_i) begin
+                hbias_i_masked[i*BITH +: BITH] = hbias_pipe[i*BITH +: BITH];
+            end else begin
+                hbias_i_masked[i*BITH +: BITH] =
+                    (!flipped_valid_array[i][counter_q_diff]) ? '0 : hbias_pipe[i*BITH +: BITH];
             end
         end
     end
@@ -518,7 +509,7 @@ endgenerate
                 .spin_vector_i(spin_cached),
                 .current_spin_i(current_spin[i]),
                 .weight_i(weight_selected[i*BITJ*DATASPIN +: BITJ*DATASPIN]),
-                .hbias_i(hbias_pipe[i*BITH +: BITH]),
+                .hbias_i(hbias_i_masked[i*BITH +: BITH]),
                 .hscaling_i(hscaling_pipe[i*SCALING_BIT +: SCALING_BIT]),
                 .energy_o(local_energy[i])
             );
