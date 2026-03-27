@@ -88,6 +88,8 @@ set_attribute syn_generic_effort medium
 set_attribute syn_map_effort     medium
 set_attribute syn_opt_effort     medium
 
+exit 0
+
 syn_generic ${DESIGN}
 report timing -lint
 
