@@ -75,13 +75,6 @@ if {[info exists ::env(DOTP_ARCH)]} {
     set DOTP_ARCH 1
 }
 
-# SYN_MODULE = name of the top-level module
-if {[info exists ::env(SYN_MODULE)]} { 
-    set SYN_MODULE $::env(SYN_MODULE)
-} else {
-    set SYN_MODULE "syn_tle"
-}
-
 # RETIME = 1 to enable retiming, 0 to disable it
 if {[info exists ::env(RETIME)]} { 
     set RETIME $::env(RETIME)

@@ -8,13 +8,16 @@
 
 set_attribute information_level 2
 
-
-
 set SCRIPT_DIR [file dirname [info script]]
 set PROJECT_DIR    $SCRIPT_DIR/../../
+set SYN_DIR        $PROJECT_DIR/target/syn
 set INPUTS_DIR     $SCRIPT_DIR/inputs
 
+source ${INPUTS_DIR}/src/config.tcl
 source ${INPUTS_DIR}/defines.tcl
+
+# Setting up the technology
+source ${INPUTS_DIR}/tech/${TECH_NODE}_setup.tcl
 
 set DESIGN ${SYN_MODULE}
 puts "Design: ${DESIGN}"
@@ -28,18 +31,6 @@ set HDL_PATH [ list \
 set search_path [ join "$HDL_PATH
                         $HDL_PATH/libs/include
                         $HDL_PATH/libs" ]
-
-#if multiple IPs are used, add them to the list
-#set search_path [ join "$HDL_PATH 
-#                        $IPS_PATH" ]
-
-set reAnalyzeRTL "TRUE"
-
-source $SCRIPT_DIR/tech/sky130_open_pdks_setup.tcl
-
-set_db library [list \
-    ${SKYWT130_TIMING_HOME}/sky130_fd_sc_hd__tt_025C_1v80.lib \
-    ]
 
 set_attribute auto_ungroup none
 set_attribute hdl_bidirectional_assign false
@@ -58,7 +49,6 @@ set_attribute hdl_generate_index_style "%s_%d"
 ## Set up allowing const_value for inout to PAD RETC
 set_attribute hdl_allow_inout_const_port_connect true
 
-set_attribute lef_library ${SKYWT130_LEF_FILES}
 set_attribute interconnect_mode ple
 
 set_attribute init_hdl_search_path $HDL_PATH
@@ -80,21 +70,19 @@ read_hdl -sv ${HDL_LIST}
 elaborate ${DESIGN}
 check_design -unresolved
 
-# if {$RETIME} {
-#     if {$DESIGN == "syn_tle"} {
-#         set_attribute dont_retime true syn_tle/input_buffer
-#         set_attribute dont_retime true syn_tle/output_buffer
-#         set_attribute retime true *MatMul*
-#     }
-# }
-
-set_attribute retime true *MatMul*
+if {$RETIME} {
+    if {$DESIGN == "syn_tle"} {
+        set_attribute dont_retime true syn_tle/input_buffer
+        set_attribute dont_retime true syn_tle/output_buffer
+        set_attribute retime true *${SYN_MODULE}*
+    }
+}
 
 read_sdc ${INPUTS_DIR}/constraints.sdc
 
-read_power_intent ${SCRIPT_DIR}/tech/power_intent.upf
-apply_power_intent
-commit_power_intent
+# read_power_intent ${SCRIPT_DIR}/tech/power_intent.upf
+# apply_power_intent
+# commit_power_intent
 
 set_attribute syn_generic_effort medium
 set_attribute syn_map_effort     medium
@@ -108,13 +96,13 @@ syn_opt
 
 check_timing_intent
 
-report timing                       > ${OUTPUTS_DIR}/${DESIGN}_timing.rpt
-report timing -summary              > ${OUTPUTS_DIR}/${DESIGN}_timing_summary.rpt
-report area                         > ${OUTPUTS_DIR}/${DESIGN}_area.rpt
-report datapath                     > ${OUTPUTS_DIR}/${DESIGN}_datapath_incr.rpt
-report messages                     > ${OUTPUTS_DIR}/${DESIGN}_messages.rpt
-report gates                        > ${OUTPUTS_DIR}/${DESIGN}_gates.rpt
-report power                        > ${OUTPUTS_DIR}/${DESIGN}_power.rpt
+report timing > ${OUTPUTS_DIR}/${DESIGN}_timing.rpt
+report timing -summary > ${OUTPUTS_DIR}/${DESIGN}_timing_summary.rpt
+report area > ${OUTPUTS_DIR}/${DESIGN}_area.rpt
+report datapath > ${OUTPUTS_DIR}/${DESIGN}_datapath_incr.rpt
+report messages > ${OUTPUTS_DIR}/${DESIGN}_messages.rpt
+report gates > ${OUTPUTS_DIR}/${DESIGN}_gates.rpt
+report power > ${OUTPUTS_DIR}/${DESIGN}_power.rpt
 report disabled_transparent_latches > ${OUTPUTS_DIR}/${DESIGN}_latches.rpt
 
 write_hdl -pg > ${OUTPUTS_DIR}/${DESIGN}.v

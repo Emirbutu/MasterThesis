@@ -1,0 +1,3 @@
+[submodule "target/syn/tech/tsmc28"]
+	path = target/syn/tech/tsmc28
+	url = git@github.com:Emirbutu/TSMC_28nm_Synthesis.git

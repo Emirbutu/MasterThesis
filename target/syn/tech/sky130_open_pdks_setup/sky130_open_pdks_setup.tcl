@@ -17,3 +17,9 @@ set SKYWT130_LEF_FILES [list \
 set all_lef_files $SKYWT130_LEF_FILES
 
 set SKYWT130_TIMING_HOME "$SKYWT130_PDK_HOME/sky130_fd_sc_hd/lib"
+
+set_db library [list \
+    ${SKYWT130_TIMING_HOME}/sky130_fd_sc_hd__tt_025C_1v80.lib \
+    ]
+
+set_attribute lef_library ${SKYWT130_LEF_FILES}
