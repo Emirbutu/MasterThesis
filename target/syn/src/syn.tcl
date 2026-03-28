@@ -9,15 +9,17 @@
 set_attribute information_level 2
 
 set SCRIPT_DIR [file dirname [info script]]
-set PROJECT_DIR    $SCRIPT_DIR/../../
+set PROJECT_DIR    $SCRIPT_DIR/../../..
 set SYN_DIR        $PROJECT_DIR/target/syn
-set INPUTS_DIR     $SCRIPT_DIR/inputs
-
-source ${INPUTS_DIR}/src/config.tcl
+set INPUTS_DIR     $SCRIPT_DIR/../inputs
+echo "Synthesis script: $SCRIPT_DIR)"
+echo "Project directory: $PROJECT_DIR"
+echo "Synthesis directory: $SYN_DIR"
+source ${INPUTS_DIR}/../src/config.tcl
 source ${INPUTS_DIR}/defines.tcl
 
 # Setting up the technology
-source ${INPUTS_DIR}/tech/${TECH_NODE}_setup.tcl
+source ${SYN_DIR}/tech/tsmc28/${TECH_NODE}_setup.tcl
 
 set DESIGN ${SYN_MODULE}
 puts "Design: ${DESIGN}"

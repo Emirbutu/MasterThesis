@@ -36,14 +36,9 @@ SCRIPT_DIR=$(dirname "$0")
 ROOT_DIR=$(realpath "$SCRIPT_DIR/..")
 
 # Default values
-DATAW=8
-M_SIZE=1
-N_SIZE=1
-K_SIZE=8
-PIPE_REGS_TREE=3
-PIPE_REGS_MUL=1
+
 CLK_SPD=DOTP_ARCH=1
-SYN_MODULE="MatMul"
+SYN_MODULE="syn_tle"
 RETIME=1
 OUTPUT_DIR=
 
@@ -115,18 +110,13 @@ fi
 
 echo "Running synthesis with the following parameters:"
 echo "  SYN_MODULE=$SYN_MODULE"
-echo "  DATAW=$DATAW"
-echo "  M_SIZE=$M_SIZE"
-echo "  N_SIZE=$N_SIZE"
-echo "  K_SIZE=$K_SIZE"
-echo "  PIPE_REGS_TREE=$PIPE_REGS_TREE"
-echo "  PIPE_REGS_MUL=$PIPE_REGS_MUL"
 echo "  CLK_SPD=$CLK_SPD"
 echo "  DOTP_ARCH=$DOTP_ARCH"
 echo "  RETIME=$RETIME"
 echo "  OUTPUT_DIR=$OUTPUT_DIR"
 
-cd "$ROOT_DIR/target/syn"
+cd "$ROOT_DIR/target/syn/src"
+echo "$ROOT_DIR"
 mkdir -p ./work
 cd ./work
 
