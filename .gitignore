@@ -223,3 +223,4 @@ Miniconda3-latest-Linux-x86_64.sh
 
 **/outputs/
 .genus_tmp/
+/tsmc28_setup.tclcd 
