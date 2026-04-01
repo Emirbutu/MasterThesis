@@ -32,7 +32,7 @@ ROOT_DIR=$(realpath "$SCRIPT_DIR/..")
 
 # Default values
 
-CLK_SPD=10000
+CLK_SPD=3000
 SYN_MODULE="syn_tle"
 RETIME=1
 OUTPUT_DIR=
