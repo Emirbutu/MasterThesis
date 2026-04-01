@@ -71,7 +71,6 @@ module logic_ctrl #(
     logic energy_valid_reg;
     logic energy_handshake;
     logic [PIPESMID:0] counter_ready_pipe;
-    logic [2:0] spin_handshake_pipe;
 
     assign weight_handshake = weight_valid_i && weight_ready_o;
     assign energy_handshake = energy_valid_o && energy_ready_i;
@@ -85,18 +84,10 @@ module logic_ctrl #(
 
     // Pipeline counter_ready_i signal
     assign counter_ready_pipe[0] = counter_ready_i;
-    assign spin_handshake_pipe[0] = spin_handshake;
     generate
         genvar i;
         for (i = 0; i < PIPESMID; i++) begin : gen_counter_ready_pipe_loop
-            `FFL(counter_ready_pipe[i+1], counter_ready_pipe[i], en_i, 1'b0, clk_i, rst_ni);
-        end
-    endgenerate
-
-     generate
-        genvar j;
-        for (j = 0; j < 3; j++) begin : gen_spin_ready_pipe_loop
-            `FFL(spin_handshake_pipe[j+1], spin_handshake_pipe[j], en_i, 1'b0, clk_i, rst_ni);
+            `FFL(counter_ready_pipe[i+1], counter_ready_pipe[i], en_i, 1'b0, clk_i, rst_ni)
         end
     endgenerate
 

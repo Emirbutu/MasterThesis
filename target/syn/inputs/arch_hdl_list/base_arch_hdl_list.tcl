@@ -9,6 +9,7 @@
 set HDL_LIST [ list \
     ${HDL_PATH}/lib/VX_pipe_register.sv \
     ${HDL_PATH}/lib/VX_pipe_buffer.sv \
+    ${HDL_PATH}/lib/bp_pipe.sv \
     ${HDL_PATH}/energy_monitor/accumulator.sv \
     ${HDL_PATH}/energy_monitor/adder_tree_unsigned.sv \
     ${HDL_PATH}/energy_monitor/adder_tree.sv \

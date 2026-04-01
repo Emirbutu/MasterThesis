@@ -24,10 +24,12 @@ module vector_caching #(
 );
     logic [DATAWIDTH-1:0] data_cached;
     logic data_handshake;
+    logic en_i_n;
     assign data_handshake = en_i & data_valid_i;
+    assign en_i_n = !en_i;
     assign data_o = (data_handshake) ? data_i : data_cached;
     assign data_cached_o = data_cached;
 
-    `FFLARNC(data_cached, data_i, data_handshake, !en_i, 'd0, clk_i, rst_ni)
+    `FFLARNC(data_cached, data_i, data_handshake, en_i_n, 'd0, clk_i, rst_ni)
 
 endmodule

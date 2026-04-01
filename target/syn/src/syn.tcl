@@ -21,6 +21,15 @@ source ${INPUTS_DIR}/defines.tcl
 # Setting up the technology
 source ${SYN_DIR}/tech/tsmc28/${TECH_NODE}_setup.tcl
 
+# In Genus, technology .lib files must be attached to the root "library"
+# attribute before elaborate.
+if {![info exists target_library] || [llength $target_library] == 0} {
+    puts "Error: target_library is not defined or empty after tech setup."
+    exit 1
+}
+set_attribute library $target_library /
+puts "Loaded [llength $target_library] technology libraries."
+
 set DESIGN ${SYN_MODULE}
 puts "Design: ${DESIGN}"
 
@@ -90,7 +99,7 @@ set_attribute syn_generic_effort medium
 set_attribute syn_map_effort     medium
 set_attribute syn_opt_effort     medium
 
-exit 0
+file mkdir $OUTPUTS_DIR
 
 syn_generic ${DESIGN}
 report timing -lint

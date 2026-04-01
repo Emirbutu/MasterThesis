@@ -177,7 +177,7 @@ module energy_monitor #(
             end
         end
     endgenerate
-    `FFL(spin_handshake_d, spin_handshake, 1'b1, 1'b0, clk_i, rst_ni);
+    `FFL(spin_handshake_d, spin_handshake, 1'b1, 1'b0, clk_i, rst_ni)
     `FFLARNC(first_operation_sampled, 1'b1, first_operation_i, energy_handshake, 1'b0, clk_i, rst_ni)
     `FF(energy_valid_o_d, energy_valid_o, 1'b0, clk_i, rst_ni)
     `FFL(energy_o_stored, energy_o, energy_valid_o_pulse, 1'b0, clk_i, rst_ni)
@@ -196,7 +196,7 @@ module energy_monitor #(
     assign accum_valid_in = accum_prev_energy_valid || weight_handshake_accum[PIPESMID];
     generate
         for (i = 0; i < PIPESMID; i++) begin: gen_weight_handshake_accum
-            `FFL(weight_handshake_accum[i+1], weight_handshake_accum[i], en_i, 1'b0, clk_i, rst_ni);
+            `FFL(weight_handshake_accum[i+1], weight_handshake_accum[i], en_i, 1'b0, clk_i, rst_ni)
         end
     endgenerate
 
