@@ -69,6 +69,8 @@ puts "Reading HDL files for ${DESIGN}"
 
 source ${INPUTS_DIR}/gen_hdl_list.tcl
 lappend HDL_LIST ${HDL_PATH}/syn_tle.sv
+lappend HDL_LIST ${HDL_PATH}/syn_tle_with_sram.sv
+lappend HDL_LIST ${HDL_PATH}/tc_sram_syn.sv
 read_hdl -sv ${HDL_LIST}
 
 # Example of defines
