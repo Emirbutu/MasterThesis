@@ -84,11 +84,9 @@ elaborate ${DESIGN}
 check_design -unresolved
 
 if {$RETIME} {
-    if {$DESIGN == "syn_tle"} {
-        set_attribute dont_retime true syn_tle/input_buffer
-        set_attribute dont_retime true syn_tle/output_buffer
-        set_attribute retime true *${SYN_MODULE}*
-    }
+    set_attribute dont_retime true ${DESIGN}/input_buffer
+    set_attribute dont_retime true ${DESIGN}/output_buffer
+    set_attribute retime true *${SYN_MODULE}*
 }
 
 read_sdc ${INPUTS_DIR}/constraints.sdc

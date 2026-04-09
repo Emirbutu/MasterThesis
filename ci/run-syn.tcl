@@ -12,7 +12,7 @@ set -e
 show_usage()
 {
     echo "Swirl: Synthesis script"
-    echo "Usage: $0 [[--clk_period=#n] [--syn_module=#name] [--output_dir=#path] [--retime] [--help]]"
+    echo "Usage: $0 [[--clk_period=#n] [--syn_module=#name] [--sram] [--output_dir=#path] [--retime] [--help]]"
 }
 
 show_help()
@@ -22,6 +22,8 @@ show_help()
     echo "Options:"
     echo "  --clk_period=#n: target clock period in ps (default: 10000)"
     echo "  --syn_module=#name: top module to synthesize (default: syn_tle)"
+    echo "  --sram: synthesize syn_tle_with_sram instead of syn_tle"
+    echo "  SRAM=1: environment-variable form of --sram"
     echo "  --retime: enable retiming (default: enabled)"
     echo "  --output_dir=#path: output directory (default: ./outputs/)"
     echo "  --help: show this help message"
@@ -33,7 +35,8 @@ ROOT_DIR=$(realpath "$SCRIPT_DIR/..")
 # Default values
 
 CLK_SPD=3000
-SYN_MODULE="syn_tle"
+SYN_MODULE=${SYN_MODULE:-}
+SRAM=${SRAM:-0}
 RETIME=1
 OUTPUT_DIR=
 
@@ -46,6 +49,14 @@ case $i in
         ;;
     --syn_module=*)
         SYN_MODULE="${i#*=}"
+        shift
+        ;;
+    --sram)
+        SRAM=1
+        shift
+        ;;
+    --no-sram)
+        SRAM=0
         shift
         ;;
     --output_dir=*)
@@ -68,6 +79,14 @@ case $i in
 esac
 done
 
+if [ -z "$SYN_MODULE" ]; then
+    if [ "$SRAM" = "1" ]; then
+        SYN_MODULE="syn_tle_with_sram"
+    else
+        SYN_MODULE="syn_tle"
+    fi
+fi
+
 
 if [ -z "$OUTPUT_DIR" ]; then
     OUTPUT_DIR="$ROOT_DIR/target/syn/outputs/${SYN_MODULE}/C${CLK_SPD}_RT${RETIME}"
@@ -76,6 +95,7 @@ fi
 
 echo "Running synthesis with the following parameters:"
 echo "  SYN_MODULE=$SYN_MODULE"
+echo "  SRAM=$SRAM"
 echo "  CLK_SPD=$CLK_SPD"
 echo "  RETIME=$RETIME"
 echo "  OUTPUT_DIR=$OUTPUT_DIR"

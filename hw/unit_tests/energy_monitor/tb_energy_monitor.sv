@@ -113,6 +113,7 @@ module tb_energy_monitor;
     logic signed [ENERGY_TOTAL_BIT-1:0] energy_o;
     logic [$clog2(DATASPIN)-1:0] counter_spin_o;
     wire  [PARALLELISM-1:0][$clog2(DATASPIN/PARALLELISM)-1:0] weight_raddr_em_o;
+    wire  [PARALLELISM-1:0] weight_raddr_valid_em_o;
 
     // SRAM signals for each PARALLELISM bank
     logic [PARALLELISM-1:0][SRAM_AWIDTH-1:0] sram_addr;
@@ -154,6 +155,7 @@ module tb_energy_monitor;
         .weight_ready_o(weight_ready_o),
         .counter_spin_o(counter_spin_o),
         .weight_raddr_em_o(weight_raddr_em_o),
+        .weight_raddr_valid_em_o(weight_raddr_valid_em_o),
         .energy_valid_o(energy_valid_o),
         .energy_ready_i(energy_ready_i),
         .standard_mode_i(standard_mode_i),
@@ -204,7 +206,7 @@ module tb_energy_monitor;
     generate
         for (i = 0; i < PARALLELISM; i++) begin : sram_addr_connect
             assign sram_addr[i] = weight_raddr_em_o[i];
-            assign sram_cs[i] = weight_ready_o;
+            assign sram_cs[i] = weight_ready_o && weight_raddr_valid_em_o[i];  // Gate per-lane
             assign sram_we[i] = 1'b0;            // Read-only mode
             assign sram_be[i] = '1;              // All bytes enabled
             assign sram_wdata[i] = '0;           // Not writing
@@ -249,8 +251,8 @@ module tb_energy_monitor;
     endgenerate
 
     // Connect SRAM valid output to DUT weight_valid_i
-    // All banks should be valid simultaneously, so AND them for safety
-    assign weight_valid_i = &sram_valid; // All banks must be valid
+    // OR of sram_valid signals: active lanes trigger when ready, inactive lanes are naturally 0
+    assign weight_valid_i = |sram_valid;
     
     // Clock generation
     initial begin

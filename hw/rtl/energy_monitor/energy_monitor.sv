@@ -95,6 +95,8 @@ module energy_monitor #(
     output logic [SPINIDX_BIT-1:0] counter_spin_o,
     // Parallel output for weight_raddr_em_o
     output logic [PARALLELISM-1:0][$clog2(DATASPIN / PARALLELISM)-1:0] weight_raddr_em_o,
+    // Per-lane valid for weight_raddr_em_o to gate SRAM reads in top wrapper
+    output logic [PARALLELISM-1:0] weight_raddr_valid_em_o,
 
     output logic energy_valid_o,
     input logic energy_ready_i,
@@ -546,8 +548,10 @@ endgenerate
             always_comb begin
                 if (first_operation_sampled || standard_mode_i) begin
                     weight_raddr_em_o[i_weight_raddr] = counter_q_sram;
+                    weight_raddr_valid_em_o[i_weight_raddr] = 1'b1;
                 end else begin
                     weight_raddr_em_o[i_weight_raddr] = flipped_positions_array[i_weight_raddr][counter_q_sram] ;
+                    weight_raddr_valid_em_o[i_weight_raddr] =  flipped_valid_array[i_weight_raddr][counter_q_sram];
                 end
             end
         end

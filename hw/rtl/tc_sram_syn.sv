@@ -4,8 +4,8 @@
 
 // Synthesis SRAM wrapper.
 // Interface is aligned with tc_sram_eth/tc_sram-style generic SRAM wrappers.
-
-`include "VX_platform.vh"
+ 
+`include "include/VX_platform.vh"
 
 // Macro pin mapping for ts1n28hpcpuhdhvtb64x256m1swbso_170a (TSMC28 64x256 SRAM)
 // Pin descriptions from Liberty file:
@@ -79,7 +79,7 @@ module tc_sram_syn #(
 
     generate
         if ((DataWidth == 256) && (NumWords == 64)) begin : gen_64x256
-            ts1n28hpcpuhdhvtb64x256m1swbso_170a i_sp_ram (`TSMC28_PORT_CONNECT);
+            TS1N28HPCPUHDHVTB64X256M1SWBSO i_sp_ram (`TSMC28_PORT_CONNECT);
         end else begin : gen_invalid_cfg
             initial $error("Unsupported tc_sram_syn geometry: NumWords=%0d DataWidth=%0d. Supported: 64x256 (64 words, 256 bits/word).", NumWords, DataWidth);
         end

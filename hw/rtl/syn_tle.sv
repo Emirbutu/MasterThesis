@@ -138,6 +138,7 @@ module syn_tle #(
         .weight_ready_o(dut_weight_ready),
         .counter_spin_o(dut_counter_spin),
         .weight_raddr_em_o(dut_weight_raddr),
+        .weight_raddr_valid_em_o(),
         .energy_valid_o(dut_energy_valid),
         .energy_ready_i(dut_energy_ready),
         .energy_o(dut_energy)

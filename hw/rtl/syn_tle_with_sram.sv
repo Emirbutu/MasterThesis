@@ -98,7 +98,7 @@ module syn_tle_with_sram #(
     assign in_config_counter = ib_data_out[IN_LSB_CFG_COUNTER +: SPINIDX_BIT];
     assign in_spin_valid = ib_data_out[IN_LSB_SPIN_VALID +: 1];
     assign in_spin = ib_data_out[IN_LSB_SPIN +: DATASPIN];
-    assign in_weight_valid = ib_data_out[IN_LSB_WEIGHT_VALID +: 1];
+    assign in_weight_valid = ib_data_out[IN_LSB_WEIGHT_VALID +: 1]; //To write into SRAM.
     assign in_weight = ib_data_out[IN_LSB_WEIGHT +: DATAJ];
     assign in_hbias = ib_data_out[IN_LSB_HBIAS +: DATAH];
     assign in_hscaling = ib_data_out[IN_LSB_HSCALING +: DATASCALING];
@@ -108,6 +108,7 @@ module syn_tle_with_sram #(
     wire dut_weight_ready;
     wire [SPINIDX_BIT-1:0] dut_counter_spin;
     wire [PARALLELISM-1:0][WEIGHT_ADDRW-1:0] dut_weight_raddr;
+    wire [PARALLELISM-1:0] dut_weight_raddr_valid;
     wire dut_energy_valid;
     wire dut_energy_ready;
     wire signed [ENERGY_TOTAL_BIT-1:0] dut_energy;
@@ -120,8 +121,8 @@ module syn_tle_with_sram #(
     assign ib_ready_in = ib_cfg_fire && ib_spin_fire;
 
     wire [PARALLELISM-1:0] sram_read_req;
-    wire [PARALLELISM-1:0] sram_valid;
-    reg  [PARALLELISM-1:0] sram_read_req_d;
+    wire any_read_req;
+    reg  any_read_req_d;
 
     wire [DATAJ-1:0] sram_weight;
     wire [DATAH-1:0] sram_hbias;
@@ -140,13 +141,13 @@ module syn_tle_with_sram #(
             reg [BITH-1:0] hbias_reg;
             reg [SCALING_BIT-1:0] hscaling_reg;
 
-            assign sram_read_req[i] = dut_weight_ready && ib_valid_out && in_en;
+            assign sram_read_req[i] = dut_weight_ready && ib_valid_out && in_en && dut_weight_raddr_valid[i];
 
             assign sram_req_1p[0] = (ib_valid_out && in_weight_valid) || sram_read_req[i];
             assign sram_we_1p[0] = ib_valid_out && in_weight_valid;
             assign sram_addr_1p[0] = (ib_valid_out && in_weight_valid)
                 ? in_config_counter[WEIGHT_ADDRW-1:0]
-                : dut_weight_raddr[i];
+                : (dut_weight_raddr_valid[i] ? dut_weight_raddr[i] : '0);
             assign sram_wdata_1p[0] = in_weight[i*SRAM_WEIGHT_DW_PER_LANE +: SRAM_WEIGHT_DW_PER_LANE];
             assign sram_be_1p[0] = {SRAM_BEW{1'b1}};
 
@@ -167,8 +168,6 @@ module syn_tle_with_sram #(
                 .rdata_o(sram_rdata_1p)
             );
 
-            assign sram_valid[i] = sram_read_req_d[i];
-
             always @(posedge clk or negedge reset_n) begin
                 if (!reset_n) begin
                     hbias_reg <= '0;
@@ -187,11 +186,13 @@ module syn_tle_with_sram #(
         end
     endgenerate
 
+    assign any_read_req = |sram_read_req;
+
     always @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
-            sram_read_req_d <= '0;
+            any_read_req_d <= 1'b0;
         end else begin
-            sram_read_req_d <= sram_read_req;
+            any_read_req_d <= any_read_req;
         end
     end
 
@@ -217,18 +218,20 @@ module syn_tle_with_sram #(
         .spin_valid_i(ib_valid_out && in_spin_valid),
         .spin_i(in_spin),
         .spin_ready_o(dut_spin_ready),
-        .weight_valid_i(&sram_valid),
+        .weight_valid_i(any_read_req_d),
         .weight_i(sram_weight),
         .hbias_i(sram_hbias),
         .hscaling_i(sram_hscaling),
         .weight_ready_o(dut_weight_ready),
         .counter_spin_o(dut_counter_spin),
         .weight_raddr_em_o(dut_weight_raddr),
+        .weight_raddr_valid_em_o(dut_weight_raddr_valid),
         .energy_valid_o(dut_energy_valid),
         .energy_ready_i(dut_energy_ready),
         .energy_o(dut_energy)
     );
 
+    // Output payload from monitor wrapper
     wire [OUT_DATAW-1:0] ob_data_in;
     assign ob_data_in = {
         dut_energy,
