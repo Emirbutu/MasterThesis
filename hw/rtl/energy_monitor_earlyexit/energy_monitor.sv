@@ -146,7 +146,6 @@ module energy_monitor #(
     logic [DATAJ-1:0] weight_selected;
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] flipped_count [PARALLELISM-1:0];
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] max_flipped_count;
-    logic max_flipped_count_zero;
     logic signed [ENERGY_TOTAL_BIT-1:0] accum_data_in;
     logic accum_valid_in;
     // Arrays for legal variable indexing
@@ -248,15 +247,12 @@ module energy_monitor #(
     endgenerate
     // Logic FSM
     logic_ctrl #(
-        .PIPESMID(PIPESMID),
-        .MAX_FLIPPED_COUNT_W($clog2(DATASPIN/PARALLELISM+1))
+        .PIPESMID(PIPESMID)
     ) u_logic_ctrl (
         .clk_i(clk_i),
         .rst_ni(rst_ni),
         .en_i(en_i),
         .max_flipped_count_valid(max_flipped_count_valid),
-        .max_flipped_count_zero_i(max_flipped_count_zero),
-        .max_flipped_count_i(max_flipped_count),
         .standard_mode_i(standard_mode_i),
         .first_operation_sampled_i(first_operation_sampled),
         .config_valid_i(config_valid_pipe),
@@ -388,8 +384,7 @@ module energy_monitor #(
         .valid_i(spin_handshake_sampled[0]), // all sampled signals are aligned
         .data_i(flipped_count),
         .valid_o(max_flipped_count_valid),
-        .max_o(max_flipped_count),
-        .zero_o(max_flipped_count_zero)
+        .max_o(max_flipped_count)
     );
     // Find all '1' positions in flipped spin vector
     generate

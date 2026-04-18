@@ -114,13 +114,13 @@ if [ "${CLEAN_ONLY}" -eq 1 ]; then
 else
     if [ "${CLEAN}" -eq 1 ]; then # CLEAN is set to 1
         if [ -n "${HDL_FILE_LIST}" ]; then # HDL_FILE_LIST is not empty
-            HDL_FILE_LIST=${HDL_FILE_LIST} DBG=${DBG} DEFINES=${DEFINES} NO_GUI=${NO_GUI} make -C "${TEST_PATH}" clean questa-run
+            HDL_FILES_LIST=${HDL_FILE_LIST} DBG=${DBG} DEFINES=${DEFINES} NO_GUI=${NO_GUI} make -C "${TEST_PATH}" clean questa-run
         else
              DBG=${DBG} DEFINES=${DEFINES} NO_GUI=${NO_GUI} make -C "${TEST_PATH}" clean questa-run
         fi
     else
         if [ -n "${HDL_FILE_LIST}" ]; then # HDL_FILE_LIST is not empty
-            HDL_FILE_LIST=${HDL_FILE_LIST} DBG=${DBG} DEFINES=${DEFINES} NO_GUI=${NO_GUI} make -C "${TEST_PATH}" questa-run
+            HDL_FILES_LIST=${HDL_FILE_LIST} DBG=${DBG} DEFINES=${DEFINES} NO_GUI=${NO_GUI} make -C "${TEST_PATH}" questa-run
         else
              DBG=${DBG} DEFINES=${DEFINES} NO_GUI=${NO_GUI} make -C "${TEST_PATH}" questa-run
         fi

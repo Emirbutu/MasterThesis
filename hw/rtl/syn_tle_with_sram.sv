@@ -33,8 +33,10 @@ module syn_tle_with_sram #(
     parameter int WEIGHT_ADDRW = $clog2(DATASPIN / PARALLELISM),
     parameter int WEIGHT_ADDR_BUSW = PARALLELISM * WEIGHT_ADDRW,
     parameter int SRAM_NUM_WORDS = DATASPIN / PARALLELISM,
-    parameter int SRAM_WEIGHT_DW_PER_LANE = (DATASPIN / PARALLELISM) * BITJ,
-    parameter int SRAM_WORD_DW = SRAM_WEIGHT_DW_PER_LANE,
+    parameter int SRAM_WEIGHT_DW_PER_LANE = DATASPIN * BITJ,
+    parameter int SRAM_WORD_DW = (DATASPIN / PARALLELISM) * BITJ,
+    parameter int SRAM_BANKS_PER_LANE = (SRAM_WEIGHT_DW_PER_LANE + SRAM_WORD_DW - 1) / SRAM_WORD_DW,
+    parameter int SRAM_NUM_BANKS = PARALLELISM * SRAM_BANKS_PER_LANE,
     parameter int SRAM_BYTEW = 8,
     parameter int SRAM_BEW = (SRAM_WORD_DW + SRAM_BYTEW - 1) / SRAM_BYTEW,
     parameter int IN_DATAW = 1 + 1 + 1 + 1 + SPINIDX_BIT + 1 + DATASPIN + 1 + DATAJ + DATAH + DATASCALING,
@@ -115,10 +117,16 @@ module syn_tle_with_sram #(
 
     wire ib_cfg_fire;
     wire ib_spin_fire;
+    wire ib_accept;
+    wire sram_write_req;
+    wire [WEIGHT_ADDRW-1:0] sram_write_addr;
 
     assign ib_cfg_fire = (~(ib_valid_out && in_config_valid)) || dut_config_ready;
     assign ib_spin_fire = (~(ib_valid_out && in_spin_valid)) || dut_spin_ready;
     assign ib_ready_in = ib_cfg_fire && ib_spin_fire;
+    assign ib_accept = ib_valid_out && ib_ready_in;
+    assign sram_write_req = ib_accept && in_weight_valid;
+    assign sram_write_addr = in_config_counter[WEIGHT_ADDRW-1:0];
 
     wire [PARALLELISM-1:0] sram_read_req;
     wire any_read_req;
@@ -131,58 +139,131 @@ module syn_tle_with_sram #(
     genvar i;
     generate
         for (i = 0; i < PARALLELISM; i++) begin : gen_weight_srams
-            wire [0:0] sram_req_1p;
-            wire [0:0] sram_we_1p;
-            wire [0:0][WEIGHT_ADDRW-1:0] sram_addr_1p;
-            wire [0:0][SRAM_WORD_DW-1:0] sram_wdata_1p;
-            wire [0:0][SRAM_BEW-1:0] sram_be_1p;
-            wire [0:0][SRAM_WORD_DW-1:0] sram_rdata_1p;
             wire [SRAM_WEIGHT_DW_PER_LANE-1:0] weight_col_i;
-            reg [BITH-1:0] hbias_reg;
-            reg [SCALING_BIT-1:0] hscaling_reg;
 
-            assign sram_read_req[i] = dut_weight_ready && ib_valid_out && in_en && dut_weight_raddr_valid[i];
+            assign sram_read_req[i] = dut_weight_ready && dut_weight_raddr_valid[i];
 
-            assign sram_req_1p[0] = (ib_valid_out && in_weight_valid) || sram_read_req[i];
-            assign sram_we_1p[0] = ib_valid_out && in_weight_valid;
-            assign sram_addr_1p[0] = (ib_valid_out && in_weight_valid)
-                ? in_config_counter[WEIGHT_ADDRW-1:0]
+            for (genvar b = 0; b < SRAM_BANKS_PER_LANE; b++) begin : gen_lane_bank
+                localparam int SLICE_LSB = b * SRAM_WORD_DW;
+                localparam int SLICE_DW = ((SLICE_LSB + SRAM_WORD_DW) > SRAM_WEIGHT_DW_PER_LANE)
+                    ? (SRAM_WEIGHT_DW_PER_LANE - SLICE_LSB)
+                    : SRAM_WORD_DW;
+                localparam int BANK_FLAT = i * SRAM_BANKS_PER_LANE + b;
+                localparam INIT_FILE =
+                    (BANK_FLAT == 0)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank00.cde" :
+                    (BANK_FLAT == 1)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank01.cde" :
+                    (BANK_FLAT == 2)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank02.cde" :
+                    (BANK_FLAT == 3)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank03.cde" :
+                    (BANK_FLAT == 4)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank04.cde" :
+                    (BANK_FLAT == 5)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank05.cde" :
+                    (BANK_FLAT == 6)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank06.cde" :
+                    (BANK_FLAT == 7)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank07.cde" :
+                    (BANK_FLAT == 8)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank08.cde" :
+                    (BANK_FLAT == 9)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank09.cde" :
+                    (BANK_FLAT == 10) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank10.cde" :
+                    (BANK_FLAT == 11) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank11.cde" :
+                    (BANK_FLAT == 12) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank12.cde" :
+                    (BANK_FLAT == 13) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank13.cde" :
+                    (BANK_FLAT == 14) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank14.cde" :
+                    "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank15.cde";
+
+                wire [0:0] sram_req_1p;
+                wire [0:0] sram_we_1p;
+                wire [0:0][WEIGHT_ADDRW-1:0] sram_addr_1p;
+                wire [0:0][SRAM_WORD_DW-1:0] sram_wdata_1p;
+                wire [0:0][SRAM_BEW-1:0] sram_be_1p;
+                wire [0:0][SRAM_WORD_DW-1:0] sram_rdata_1p;
+                logic [SRAM_WORD_DW-1:0] wr_slice_padded;
+
+                assign sram_req_1p[0] = sram_write_req || sram_read_req[i];
+                assign sram_we_1p[0] = sram_write_req;
+                assign sram_addr_1p[0] = sram_write_req
+                    ? sram_write_addr
+                    : (dut_weight_raddr_valid[i] ? dut_weight_raddr[i] : '0);
+
+                always_comb begin
+                    wr_slice_padded = '0;
+                    wr_slice_padded[0 +: SLICE_DW] =
+                        in_weight[i*SRAM_WEIGHT_DW_PER_LANE + SLICE_LSB +: SLICE_DW];
+                end
+                assign sram_wdata_1p[0] = wr_slice_padded;
+                assign sram_be_1p[0] = {SRAM_BEW{1'b1}};
+
+                tc_sram_syn #(
+                    .NumWords(SRAM_NUM_WORDS),
+                    .DataWidth(SRAM_WORD_DW),
+                    .ByteWidth(SRAM_BYTEW),
+                    .NumPorts(1),
+                    .Latency(1),
+                    .CdeFileInit(INIT_FILE)
+                ) u_sram (
+                    .clk_i(clk),
+                    .rst_ni(reset_n),
+                    .req_i(sram_req_1p),
+                    .we_i(sram_we_1p),
+                    .addr_i(sram_addr_1p),
+                    .wdata_i(sram_wdata_1p),
+                    .be_i(sram_be_1p),
+                    .rdata_o(sram_rdata_1p)
+                );
+
+                assign weight_col_i[SLICE_LSB +: SLICE_DW] = sram_rdata_1p[0][0 +: SLICE_DW];
+            end
+
+            assign sram_weight[i*SRAM_WEIGHT_DW_PER_LANE +: SRAM_WEIGHT_DW_PER_LANE] = weight_col_i;
+        end
+
+        for (i = 0; i < PARALLELISM; i++) begin : gen_hbias_scaling_srams
+            localparam int HS_BITS = BITH + SCALING_BIT;
+            localparam INIT_FILE_HS =
+                (i == 0) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank00.cde" :
+                (i == 1) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank01.cde" :
+                (i == 2) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank02.cde" :
+                           "TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank03.cde";
+
+            wire [0:0] hs_sram_req_1p;
+            wire [0:0] hs_sram_we_1p;
+            wire [0:0][WEIGHT_ADDRW-1:0] hs_sram_addr_1p;
+            wire [0:0][SRAM_WORD_DW-1:0] hs_sram_wdata_1p;
+            wire [0:0][SRAM_BEW-1:0] hs_sram_be_1p;
+            wire [0:0][SRAM_WORD_DW-1:0] hs_sram_rdata_1p;
+            logic [SRAM_WORD_DW-1:0] hs_wr_padded;
+
+            assign hs_sram_req_1p[0] = sram_write_req || sram_read_req[i];
+            assign hs_sram_we_1p[0] = sram_write_req;
+            assign hs_sram_addr_1p[0] = sram_write_req
+                ? sram_write_addr
                 : (dut_weight_raddr_valid[i] ? dut_weight_raddr[i] : '0);
-            assign sram_wdata_1p[0] = in_weight[i*SRAM_WEIGHT_DW_PER_LANE +: SRAM_WEIGHT_DW_PER_LANE];
-            assign sram_be_1p[0] = {SRAM_BEW{1'b1}};
+
+            always_comb begin
+                hs_wr_padded = '0;
+                hs_wr_padded[0 +: BITH] = in_hbias[i*BITH +: BITH];
+                hs_wr_padded[BITH +: SCALING_BIT] = in_hscaling[i*SCALING_BIT +: SCALING_BIT];
+            end
+
+            assign hs_sram_wdata_1p[0] = hs_wr_padded;
+            assign hs_sram_be_1p[0] = {SRAM_BEW{1'b1}};
 
             tc_sram_syn #(
                 .NumWords(SRAM_NUM_WORDS),
                 .DataWidth(SRAM_WORD_DW),
                 .ByteWidth(SRAM_BYTEW),
                 .NumPorts(1),
-                .Latency(1)
-            ) u_sram (
+                .Latency(1),
+                .CdeFileInit(INIT_FILE_HS)
+            ) u_hbias_scaling_sram (
                 .clk_i(clk),
                 .rst_ni(reset_n),
-                .req_i(sram_req_1p),
-                .we_i(sram_we_1p),
-                .addr_i(sram_addr_1p),
-                .wdata_i(sram_wdata_1p),
-                .be_i(sram_be_1p),
-                .rdata_o(sram_rdata_1p)
+                .req_i(hs_sram_req_1p),
+                .we_i(hs_sram_we_1p),
+                .addr_i(hs_sram_addr_1p),
+                .wdata_i(hs_sram_wdata_1p),
+                .be_i(hs_sram_be_1p),
+                .rdata_o(hs_sram_rdata_1p)
             );
 
-            always @(posedge clk or negedge reset_n) begin
-                if (!reset_n) begin
-                    hbias_reg <= '0;
-                    hscaling_reg <= '0;
-                end else if (ib_valid_out && in_weight_valid) begin
-                    hbias_reg <= in_hbias[i*BITH +: BITH];
-                    hscaling_reg <= in_hscaling[i*SCALING_BIT +: SCALING_BIT];
-                end
-            end
-
-            assign weight_col_i = sram_rdata_1p[0][0 +: SRAM_WEIGHT_DW_PER_LANE];
-
-            assign sram_weight[i*SRAM_WEIGHT_DW_PER_LANE +: SRAM_WEIGHT_DW_PER_LANE] = weight_col_i;
-            assign sram_hbias[i*BITH +: BITH] = hbias_reg;
-            assign sram_hscaling[i*SCALING_BIT +: SCALING_BIT] = hscaling_reg;
+            assign sram_hbias[i*BITH +: BITH] = hs_sram_rdata_1p[0][0 +: BITH];
+            assign sram_hscaling[i*SCALING_BIT +: SCALING_BIT] = hs_sram_rdata_1p[0][BITH +: SCALING_BIT];
         end
     endgenerate
 
@@ -209,7 +290,7 @@ module syn_tle_with_sram #(
     ) DUS (
         .clk_i(clk),
         .rst_ni(reset_n),
-        .en_i(ib_valid_out && in_en),
+        .en_i(in_en),
         .standard_mode_i(in_standard_mode),
         .first_operation_i(in_first_operation),
         .config_valid_i(ib_valid_out && in_config_valid),

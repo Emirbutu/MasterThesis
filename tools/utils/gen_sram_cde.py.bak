@@ -1,0 +1,392 @@
+# Copyright 2026 KU Leuven.
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Generate per-bank SRAM CDE initialization files.
+
+Default output naming matches the TSMC 64x256 macro preload convention:
+TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank00.cde ... bank15.cde
+"""
+
+from __future__ import annotations
+
+import argparse
+import random
+from pathlib import Path
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate banked SRAM .cde preload files")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        required=True,
+        help="Directory where .cde files are generated",
+    )
+    parser.add_argument(
+        "--prefix",
+        default="TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank",
+        help="File prefix before 2-digit bank index",
+    )
+    parser.add_argument("--banks", type=int, default=16, help="Number of bank files")
+    parser.add_argument("--start-bank", type=int, default=0, help="Starting bank index")
+    parser.add_argument("--words", type=int, default=64, help="Words per bank file")
+    parser.add_argument("--bits", type=int, default=256, help="Bits per word")
+    parser.add_argument(
+        "--mode",
+        choices=["bank-nibble", "zeros", "ones", "random", "j-symmetric", "model-file"],
+        default="bank-nibble",
+        help="Initialization pattern mode",
+    )
+    parser.add_argument(
+        "--model-file",
+        type=Path,
+        help="Path to model file (text format with J matrix and h vector); enables model-file mode",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1,
+        help="Random seed (used only in random mode)",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing files",
+    )
+    parser.add_argument(
+        "--j-size",
+        type=int,
+        default=256,
+        help=(
+            "Square J-matrix dimension for j-symmetric mode. "
+            "Must satisfy j-size*4 == bits*banks/4 and j-size == words*4."
+        ),
+    )
+    parser.add_argument(
+        "--hbias-scaling-banks",
+        type=int,
+        default=4,
+        help="Number of hbias/scaling bank files to generate (set 0 to disable)",
+    )
+    parser.add_argument(
+        "--hbias-scaling-prefix",
+        default="TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank",
+        help="File prefix for hbias/scaling files before 2-digit bank index",
+    )
+    parser.add_argument(
+        "--hbias-bits",
+        type=int,
+        default=4,
+        help="Signed hbias bit-width packed at LSB of hbias/scaling word",
+    )
+    parser.add_argument(
+        "--hscaling-bits",
+        type=int,
+        default=4,
+        help="Unsigned hscaling bit-width packed above hbias",
+    )
+    parser.add_argument(
+        "--parallelism",
+        type=int,
+        default=4,
+        help="Lane count used for column mapping (column = lane + parallelism*word)",
+    )
+    return parser.parse_args()
+
+
+def parse_model_file(file_path: Path) -> tuple[list[list[int]], list[int], int, float]:
+    def parse_model_file(file_path: Path) -> tuple[list[list[int]], list[int], float, float]:
+    """Parse model file in text format.
+    
+    Format:
+    - Line 1: "# J matrix"
+    - Lines 2-257: J matrix, 256 rows of 256 binary nibbles (4-bit values)
+    - Line 258: "# h vector"
+    - Lines 259-514: h vector, 256 values (binary nibbles)
+    - Line 515: "# offset"
+    - Line 516: offset value
+    - Line 517: "# scaling_factor"
+    - Line 518: scaling_factor value
+    
+    Returns: (j_matrix, h_vector, offset, scaling_factor)
+    """
+    with file_path.open("r") as f:
+        lines = [line.strip() for line in f.readlines()]
+    
+    j_mat = []
+    h_vec = []
+        offset = 0.0
+    scaling_factor = 1.0
+    
+    idx = 0
+    
+    # Parse J matrix
+    if idx < len(lines) and lines[idx] == "# J matrix":
+        idx += 1
+        while idx < len(lines) and not lines[idx].startswith("#"):
+            row = []
+            nibbles = lines[idx].split()
+            for nib_str in nibbles:
+                val = int(nib_str, 2)
+                row.append(val)
+            j_mat.append(row)
+            idx += 1
+    
+    # Parse h vector
+    if idx < len(lines) and lines[idx] == "# h vector":
+        idx += 1
+        while idx < len(lines) and not lines[idx].startswith("#"):
+            val = int(lines[idx].strip(), 2)
+            h_vec.append(val)
+            idx += 1
+    
+    # Parse offset
+    if idx < len(lines) and lines[idx] == "# offset":
+        idx += 1
+        if idx < len(lines) and lines[idx]:
+                try:
+                    offset = float(lines[idx].strip())
+                except ValueError:
+                    offset = 0.0
+            idx += 1
+    
+    # Parse scaling_factor
+    if idx < len(lines) and lines[idx] == "# scaling_factor":
+        idx += 1
+        if idx < len(lines) and lines[idx]:
+            try:
+                scaling_factor = float(lines[idx].strip())
+            except ValueError:
+                scaling_factor = 1.0
+    
+    return j_mat, h_vec, offset, scaling_factor
+
+
+def random_j_nibble(rng: random.Random) -> int:
+    """Return a random signed 4-bit value encoded as nibble, excluding zero."""
+    # Signed 4-bit range in two's complement is [-8, 7].
+    val = rng.choice([i for i in range(-8, 8) if i != 0])
+    return val & 0xF
+
+
+def mode_j_nibble(mode: str, row: int, col: int, rng: random.Random) -> int:
+    if mode == "zeros":
+        return 0
+    if mode == "ones":
+        return 1
+    if mode == "random":
+        return rng.randrange(16)
+    if mode == "bank-nibble":
+        # Deterministic non-zero pattern from row/col while preserving symmetry.
+        return ((row + col) % 15) + 1
+    # j-symmetric: signed non-zero nibble in two's-complement.
+    return random_j_nibble(rng)
+
+
+def build_symmetric_j_matrix(j_size: int, rng: random.Random, mode: str) -> list[list[int]]:
+    """Build symmetric J with zero diagonal; entries are encoded 4-bit nibbles."""
+    mat = [[0 for _ in range(j_size)] for _ in range(j_size)]
+    for r in range(j_size):
+        for c in range(r + 1, j_size):
+            nib = mode_j_nibble(mode=mode, row=r, col=c, rng=rng)
+            mat[r][c] = nib
+            mat[c][r] = nib
+    return mat
+
+
+def build_bank_word_tables_for_j(
+    j_mat: list[list[int]],
+    banks: int,
+    words: int,
+    bits: int,
+) -> list[list[str]]:
+    """Pack J into [bank][word] hex lines according to RTL lane mapping.
+
+    Mapping used by syn_tle_with_sram:
+    - 16 banks = 4 lanes * 4 banks/lane
+    - lane = bank // 4
+    - bank_in_lane = bank % 4
+    - column index = lane + 4 * word
+    - each bank word stores 64 rows * 4 bits = 256 bits
+    """
+    if banks != 16:
+        raise ValueError("j-symmetric mode currently expects banks=16")
+    if bits != 256:
+        raise ValueError("j-symmetric mode currently expects bits=256")
+
+    j_size = len(j_mat)
+    if words * 4 != j_size:
+        raise ValueError(
+            f"j-size ({j_size}) must equal words*4 ({words*4}) for this packing"
+        )
+
+    out: list[list[str]] = [["0" * (bits // 4) for _ in range(words)] for _ in range(banks)]
+
+    for bank in range(banks):
+        lane = bank // 4
+        bank_in_lane = bank % 4
+        row_base = bank_in_lane * 64
+
+        for w in range(words):
+            col = lane + 4 * w
+            if col >= j_size:
+                raise ValueError(
+                    f"Computed col index {col} out of range for j-size={j_size}."
+                )
+
+            word_val = 0
+            for row_off in range(64):
+                row = row_base + row_off
+                nib = j_mat[row][col] & 0xF
+                word_val |= nib << (row_off * 4)
+
+            out[bank][w] = f"{word_val:0{bits // 4}x}"
+
+    return out
+
+
+def to_twos_complement(value: int, bits: int) -> int:
+    mask = (1 << bits) - 1
+    return value & mask
+
+
+def select_hscaling_value(idx: int) -> int:
+    return [1, 2, 4, 8, 16][idx]
+
+
+def build_hbias_hscaling_word(
+    lane: int,
+    word_idx: int,
+    mode: str,
+    rng: random.Random,
+    hbias_bits: int,
+    hscaling_bits: int,
+    parallelism: int,
+) -> int:
+    column = lane + parallelism * word_idx
+
+    if mode == "zeros":
+        hbias_signed = 0
+        hscaling = 1
+    elif mode == "ones":
+        hbias_signed = 1
+        hscaling = 1
+    elif mode == "random":
+        hbias_signed = rng.randrange(-(1 << (hbias_bits - 1)), 1 << (hbias_bits - 1))
+        hscaling = select_hscaling_value(rng.randrange(5))
+    elif mode == "bank-nibble":
+        hbias_signed = lane + 1
+        hscaling = select_hscaling_value(min(lane, 4))
+    else:  # j-symmetric
+        hbias_signed = column
+        hscaling = 1
+
+    hbias_raw = to_twos_complement(hbias_signed, hbias_bits)
+    hscaling_raw = hscaling & ((1 << hscaling_bits) - 1)
+    return hbias_raw | (hscaling_raw << hbias_bits)
+
+
+def main() -> None:
+    args = parse_args()
+
+    if args.banks <= 0 or args.words <= 0 or args.bits <= 0:
+        raise ValueError("banks, words, and bits must be positive")
+    if args.hbias_scaling_banks < 0:
+        raise ValueError("hbias-scaling-banks must be non-negative")
+    if args.hbias_bits <= 0 or args.hscaling_bits <= 0:
+        raise ValueError("hbias-bits and hscaling-bits must be positive")
+    if args.parallelism <= 0:
+        raise ValueError("parallelism must be positive")
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+
+    rng = random.Random(args.seed)
+
+    # Load J matrix and optional vectors from model file or generate
+    if args.model_file:
+        j_mat, h_vec, offset_val, scaling_factor = parse_model_file(args.model_file)
+        if len(j_mat) != 256 or any(len(row) != 256 for row in j_mat):
+            raise ValueError(f"Model file J matrix must be 256x256, got {len(j_mat)}x{len(j_mat[0]) if j_mat else 0}")
+        mode = "model-file"
+    else:
+        h_vec = []
+        offset_val = 0
+        scaling_factor = 1.0
+        
+        if args.j_size <= 0:
+            raise ValueError("j-size must be positive")
+        if args.j_size != 256:
+            # Keep this strict for now so generated files exactly match current RTL.
+            raise ValueError("generator currently supports only --j-size 256")
+        
+        j_mat = build_symmetric_j_matrix(args.j_size, rng, args.mode)
+        mode = args.mode
+
+    bank_words = build_bank_word_tables_for_j(
+        j_mat=j_mat,
+        banks=args.banks,
+        words=args.words,
+        bits=args.bits,
+    )
+
+    for idx in range(args.start_bank, args.start_bank + args.banks):
+        rel_idx = idx - args.start_bank
+        file_name = f"{args.prefix}{idx:02d}.cde"
+        file_path = args.out_dir / file_name
+
+        if file_path.exists() and not args.overwrite:
+            raise FileExistsError(
+                f"{file_path} already exists. Use --overwrite to replace it."
+            )
+
+        with file_path.open("w", encoding="ascii", newline="\n") as f:
+            for w in range(args.words):
+                f.write(bank_words[rel_idx][w])
+                f.write("\n")
+
+    if args.hbias_scaling_banks > 0:
+        hs_hex_chars = (args.bits + 3) // 4
+        for idx in range(args.hbias_scaling_banks):
+            file_name = f"{args.hbias_scaling_prefix}{idx:02d}.cde"
+            file_path = args.out_dir / file_name
+
+            if file_path.exists() and not args.overwrite:
+                raise FileExistsError(
+                    f"{file_path} already exists. Use --overwrite to replace it."
+                )
+
+            with file_path.open("w", encoding="ascii", newline="\n") as f:
+                for w in range(args.words):
+                    if h_vec and mode == "model-file":
+                        # Use h_vec from model file
+                        col = idx + args.parallelism * w
+                        if col < len(h_vec):
+                            hbias_raw = h_vec[col] & ((1 << args.hbias_bits) - 1)
+                            hscaling_raw = (offset_val if col == 0 else 1) & ((1 << args.hscaling_bits) - 1)
+                            packed = hbias_raw | (hscaling_raw << args.hbias_bits)
+                        else:
+                            packed = 0
+                    else:
+                        packed = build_hbias_hscaling_word(
+                            lane=idx,
+                            word_idx=w,
+                            mode=mode,
+                            rng=rng,
+                            hbias_bits=args.hbias_bits,
+                            hscaling_bits=args.hscaling_bits,
+                            parallelism=args.parallelism,
+                        )
+                    line = f"{packed:0{hs_hex_chars}x}"
+                    f.write(line)
+                    f.write("\n")
+
+    print(
+        f"Generated {args.banks} weight files"
+        f" and {args.hbias_scaling_banks} hbias/scaling files in {args.out_dir} "
+        f"({args.words} words/file, {args.bits} bits/word, mode={mode})."
+    )
+
+
+if __name__ == "__main__":
+    main()

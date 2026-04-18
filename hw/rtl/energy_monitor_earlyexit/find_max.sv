@@ -18,7 +18,8 @@
 // - valid_o: output valid signal
 // - max_o: maximum value output
 
-`include "common_cells/registers.svh"
+
+`include "../include/registers.svh"
 
 module find_max #(
     parameter int N = 4,

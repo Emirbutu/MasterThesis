@@ -31,8 +31,7 @@
 `include "../include/registers.svh"
 
 module logic_ctrl #(
-    parameter int PIPESMID = 1,
-    parameter int MAX_FLIPPED_COUNT_W = 1
+    parameter int PIPESMID = 1
 )(
     input logic clk_i,
     input logic rst_ni,
@@ -40,8 +39,6 @@ module logic_ctrl #(
     input logic standard_mode_i,
     input logic first_operation_sampled_i,
     input logic max_flipped_count_valid,
-    input logic max_flipped_count_zero_i,
-    input logic [MAX_FLIPPED_COUNT_W-1:0] max_flipped_count_i,
 
     input logic config_valid_i,
     output logic config_ready_o,
@@ -73,7 +70,6 @@ module logic_ctrl #(
     logic energy_valid_comb;
     logic energy_valid_reg;
     logic energy_handshake;
-    logic nonstandard_skip_compute;
     logic [PIPESMID:0] counter_ready_pipe;
 
     assign weight_handshake = weight_valid_i && weight_ready_o;
@@ -83,12 +79,8 @@ module logic_ctrl #(
 
     assign config_ready_o = (current_state == IDLE) && !debug_en_i;
     assign spin_ready_o = (current_state == IDLE) && !debug_en_i && (!config_valid_i);
-    assign nonstandard_skip_compute = (current_state == COMPUTE_NONSTANDARD) && max_flipped_count_zero_i;
-    assign weight_ready_o = ((current_state == COMPUTE_STANDARD) || (current_state == COMPUTE_NONSTANDARD))
-                         && (!counter_ready_i) && (!debug_en_i) && (!nonstandard_skip_compute);
-    assign energy_valid_comb = (((current_state == COMPUTE_STANDARD) || (current_state == COMPUTE_NONSTANDARD))
-                            && counter_ready_pipe[PIPESMID] && cmpt_done_i)
-                            || nonstandard_skip_compute;
+    assign weight_ready_o = ((current_state == COMPUTE_STANDARD) || (current_state == COMPUTE_NONSTANDARD)) && (!counter_ready_i) && (!debug_en_i);
+    assign energy_valid_comb = ((current_state == COMPUTE_STANDARD) || (current_state == COMPUTE_NONSTANDARD)) && counter_ready_pipe[PIPESMID] && cmpt_done_i;
 
     // Pipeline counter_ready_i signal
     assign counter_ready_pipe[0] = counter_ready_i;

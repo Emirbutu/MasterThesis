@@ -14,7 +14,7 @@
 //   in_weight_valid is asserted. The write address is in_config_counter.
 // - During compute, the monitor drives weight_raddr_em_o and this wrapper
 //   performs SRAM reads and forwards read data back to the monitor.
-module syn_tle_with_sram #(
+module syn_tle_with_sram_eth #(
     parameter int BITJ = 4,
     parameter int BITH = 4,
     parameter int DATASPIN = 256,
@@ -33,8 +33,10 @@ module syn_tle_with_sram #(
     parameter int WEIGHT_ADDRW = $clog2(DATASPIN / PARALLELISM),
     parameter int WEIGHT_ADDR_BUSW = PARALLELISM * WEIGHT_ADDRW,
     parameter int SRAM_NUM_WORDS = DATASPIN / PARALLELISM,
-    parameter int SRAM_WEIGHT_DW_PER_LANE = (DATASPIN / PARALLELISM) * BITJ,
-    parameter int SRAM_WORD_DW = SRAM_WEIGHT_DW_PER_LANE,
+    parameter int SRAM_WEIGHT_DW_PER_LANE = DATASPIN * BITJ,
+    parameter int SRAM_WORD_DW = (DATASPIN / PARALLELISM) * BITJ,
+    parameter int SRAM_BANKS_PER_LANE = (SRAM_WEIGHT_DW_PER_LANE + SRAM_WORD_DW - 1) / SRAM_WORD_DW,
+    parameter int SRAM_NUM_BANKS = PARALLELISM * SRAM_BANKS_PER_LANE,
     parameter int SRAM_BYTEW = 8,
     parameter int SRAM_BEW = (SRAM_WORD_DW + SRAM_BYTEW - 1) / SRAM_BYTEW,
     parameter int IN_DATAW = 1 + 1 + 1 + 1 + SPINIDX_BIT + 1 + DATASPIN + 1 + DATAJ + DATAH + DATASCALING,
@@ -131,42 +133,11 @@ module syn_tle_with_sram #(
     genvar i;
     generate
         for (i = 0; i < PARALLELISM; i++) begin : gen_weight_srams
-            wire [0:0] sram_req_1p;
-            wire [0:0] sram_we_1p;
-            wire [0:0][WEIGHT_ADDRW-1:0] sram_addr_1p;
-            wire [0:0][SRAM_WORD_DW-1:0] sram_wdata_1p;
-            wire [0:0][SRAM_BEW-1:0] sram_be_1p;
-            wire [0:0][SRAM_WORD_DW-1:0] sram_rdata_1p;
             wire [SRAM_WEIGHT_DW_PER_LANE-1:0] weight_col_i;
             reg [BITH-1:0] hbias_reg;
             reg [SCALING_BIT-1:0] hscaling_reg;
 
-            assign sram_read_req[i] = dut_weight_ready && ib_valid_out && in_en && dut_weight_raddr_valid[i];
-
-            assign sram_req_1p[0] = (ib_valid_out && in_weight_valid) || sram_read_req[i];
-            assign sram_we_1p[0] = ib_valid_out && in_weight_valid;
-            assign sram_addr_1p[0] = (ib_valid_out && in_weight_valid)
-                ? in_config_counter[WEIGHT_ADDRW-1:0]
-                : (dut_weight_raddr_valid[i] ? dut_weight_raddr[i] : '0);
-            assign sram_wdata_1p[0] = in_weight[i*SRAM_WEIGHT_DW_PER_LANE +: SRAM_WEIGHT_DW_PER_LANE];
-            assign sram_be_1p[0] = {SRAM_BEW{1'b1}};
-
-            tc_sram_eth #(
-                .NumWords(SRAM_NUM_WORDS),
-                .DataWidth(SRAM_WORD_DW),
-                .ByteWidth(SRAM_BYTEW),
-                .NumPorts(1),
-                .Latency(1)
-            ) u_sram (
-                .clk_i(clk),
-                .rst_ni(reset_n),
-                .req_i(sram_req_1p),
-                .we_i(sram_we_1p),
-                .addr_i(sram_addr_1p),
-                .wdata_i(sram_wdata_1p),
-                .be_i(sram_be_1p),
-                .rdata_o(sram_rdata_1p)
-            );
+            assign sram_read_req[i] = dut_weight_ready && dut_weight_raddr_valid[i];
 
             always @(posedge clk or negedge reset_n) begin
                 if (!reset_n) begin
@@ -178,7 +149,53 @@ module syn_tle_with_sram #(
                 end
             end
 
-            assign weight_col_i = sram_rdata_1p[0][0 +: SRAM_WEIGHT_DW_PER_LANE];
+            for (genvar b = 0; b < SRAM_BANKS_PER_LANE; b++) begin : gen_lane_bank
+                localparam int SLICE_LSB = b * SRAM_WORD_DW;
+                localparam int SLICE_DW = ((SLICE_LSB + SRAM_WORD_DW) > SRAM_WEIGHT_DW_PER_LANE)
+                    ? (SRAM_WEIGHT_DW_PER_LANE - SLICE_LSB)
+                    : SRAM_WORD_DW;
+
+                wire [0:0] sram_req_1p;
+                wire [0:0] sram_we_1p;
+                wire [0:0][WEIGHT_ADDRW-1:0] sram_addr_1p;
+                wire [0:0][SRAM_WORD_DW-1:0] sram_wdata_1p;
+                wire [0:0][SRAM_BEW-1:0] sram_be_1p;
+                wire [0:0][SRAM_WORD_DW-1:0] sram_rdata_1p;
+                logic [SRAM_WORD_DW-1:0] wr_slice_padded;
+
+                assign sram_req_1p[0] = (ib_valid_out && in_weight_valid) || sram_read_req[i];
+                assign sram_we_1p[0] = ib_valid_out && in_weight_valid;
+                assign sram_addr_1p[0] = (ib_valid_out && in_weight_valid)
+                    ? in_config_counter[WEIGHT_ADDRW-1:0]
+                    : (dut_weight_raddr_valid[i] ? dut_weight_raddr[i] : '0);
+
+                always_comb begin
+                    wr_slice_padded = '0;
+                    wr_slice_padded[0 +: SLICE_DW] =
+                        in_weight[i*SRAM_WEIGHT_DW_PER_LANE + SLICE_LSB +: SLICE_DW];
+                end
+                assign sram_wdata_1p[0] = wr_slice_padded;
+                assign sram_be_1p[0] = {SRAM_BEW{1'b1}};
+
+                tc_sram_eth #(
+                    .NumWords(SRAM_NUM_WORDS),
+                    .DataWidth(SRAM_WORD_DW),
+                    .ByteWidth(SRAM_BYTEW),
+                    .NumPorts(1),
+                    .Latency(1)
+                ) u_sram (
+                    .clk_i(clk),
+                    .rst_ni(reset_n),
+                    .req_i(sram_req_1p),
+                    .we_i(sram_we_1p),
+                    .addr_i(sram_addr_1p),
+                    .wdata_i(sram_wdata_1p),
+                    .be_i(sram_be_1p),
+                    .rdata_o(sram_rdata_1p)
+                );
+
+                assign weight_col_i[SLICE_LSB +: SLICE_DW] = sram_rdata_1p[0][0 +: SLICE_DW];
+            end
 
             assign sram_weight[i*SRAM_WEIGHT_DW_PER_LANE +: SRAM_WEIGHT_DW_PER_LANE] = weight_col_i;
             assign sram_hbias[i*BITH +: BITH] = hbias_reg;
@@ -209,7 +226,7 @@ module syn_tle_with_sram #(
     ) DUS (
         .clk_i(clk),
         .rst_ni(reset_n),
-        .en_i(ib_valid_out && in_en),
+        .en_i(in_en),
         .standard_mode_i(in_standard_mode),
         .first_operation_i(in_first_operation),
         .config_valid_i(ib_valid_out && in_config_valid),

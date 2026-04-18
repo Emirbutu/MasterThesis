@@ -32,8 +32,22 @@ if { [info exists ::env(SIM_NAME)] } {
 if { [info exists ::env(DEFINES)] } {
     # Add +define+ prefix to each define
     # Example: SYN=0 DBG=1 becomes +define+SYN=0 +define+DBG=1
+    # Accept both bare tokens (SYN=0) and already-prefixed tokens (+define+SYN=0).
+    # Normalizing here avoids emitting +define++define+... when the caller passes
+    # a pre-prefixed define string through the environment.
     set defs [split $::env(DEFINES)]
-    set DEFINES [join [lmap def $defs { format "+define+%s" $def } ] " "]
+    set normalized_defs {}
+    foreach def $defs {
+        if {$def eq ""} {
+            continue
+        }
+        if {[string match "+define+*" $def]} {
+            lappend normalized_defs [string range $def 8 end]
+        } else {
+            lappend normalized_defs $def
+        }
+    }
+    set DEFINES [join [lmap def $normalized_defs { format "+define+%s" $def } ] " "]
 } else {
     set DEFINES ""
 }

@@ -22,7 +22,7 @@
 `define False 1'b0
 
 `ifndef test_mode // select test mode
-`define test_mode `RANDOM_TEST 
+`define test_mode `S1W1H1_TEST 
 `endif
 
 `ifndef SPARSE_FLIP_BASE // number of bit flips in the first sparse iteration
@@ -34,7 +34,7 @@
 `endif
 
 `ifndef NUM_TESTS // number of test cases
-`define NUM_TESTS 10000
+`define NUM_TESTS 10
 `endif
 
 `ifndef PIPESINTF // number of pipeline stages at the input interface

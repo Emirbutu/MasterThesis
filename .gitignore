@@ -223,3 +223,6 @@ Miniconda3-latest-Linux-x86_64.sh
 
 **/outputs/
 .genus_tmp/
+.cde
+# TSMC SRAM preload artifacts (all files containing this macro cell name)
+**/*TS1N28HPCPUHDHVTB64X256M1SWBSO*

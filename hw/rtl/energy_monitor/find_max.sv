@@ -31,10 +31,12 @@ module find_max #(
     input logic valid_i,
     input logic [DATAW-1:0] data_i [N-1:0],
     output logic valid_o,
-    output logic [DATAW-1:0] max_o
+    output logic [DATAW-1:0] max_o,
+    output logic zero_o
 );
 
     logic [DATAW-1:0] max_comb;
+    logic zero_comb;
 
     // Combinational max finding
     always_comb begin
@@ -44,6 +46,7 @@ module find_max #(
                 max_comb = data_i[i];
             end
         end
+        zero_comb = (max_comb == '0);
         // Output max_comb - 1 if not zero, else zero
         if (max_comb != '0)
             max_comb = max_comb - 1;
@@ -52,5 +55,6 @@ module find_max #(
     // Register the output
     `FFL(max_o, max_comb, en_i && valid_i, '0, clk_i, rst_ni);
     `FFL(valid_o, valid_i, en_i, 1'b0, clk_i, rst_ni);
+    `FFL(zero_o, zero_comb, en_i && valid_i, 1'b0, clk_i, rst_ni);
 
 endmodule

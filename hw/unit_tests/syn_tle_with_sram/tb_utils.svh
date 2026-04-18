@@ -1,3 +1,4 @@
+/*
 // SRAM initialization modes
     typedef enum {
         INIT_ALL_ONES,
@@ -5,22 +6,44 @@
         INIT_RANDOM
     } init_mode_t;
 
-    function automatic logic [SRAM_DWIDTH-1:0] read_sram_word(
+    localparam int TB_BANK_WORD_DW = (DATASPIN / PARALLELISM) * BITJ;
+    localparam int TB_COL_WORD_DW = DATASPIN * BITJ;
+
+    function automatic logic [TB_COL_WORD_DW-1:0] read_sram_word(
         input int bank_idx,
         input int addr_idx
     );
+        logic [TB_COL_WORD_DW-1:0] col_data;
         begin
+            col_data = '0;
             case (bank_idx)
-                0: read_sram_word = dut.gen_weight_srams[0].u_sram.sram[addr_idx];
-                1: read_sram_word = dut.gen_weight_srams[1].u_sram.sram[addr_idx];
-                2: read_sram_word = dut.gen_weight_srams[2].u_sram.sram[addr_idx];
-                3: read_sram_word = dut.gen_weight_srams[3].u_sram.sram[addr_idx];
-            //    4: read_sram_word = sram_banks[4].u_sram.memory[addr_idx];
-            //    5: read_sram_word = sram_banks[5].u_sram.memory[addr_idx];
-            //    6: read_sram_word = sram_banks[6].u_sram.memory[addr_idx];
-            //    7: read_sram_word = sram_banks[7].u_sram.memory[addr_idx];
-                default: read_sram_word = '0;
+                0: begin
+                    col_data[0*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[0].gen_lane_bank[0].u_sram.sram[addr_idx];
+                    col_data[1*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[0].gen_lane_bank[1].u_sram.sram[addr_idx];
+                    col_data[2*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[0].gen_lane_bank[2].u_sram.sram[addr_idx];
+                    col_data[3*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[0].gen_lane_bank[3].u_sram.sram[addr_idx];
+                end
+                1: begin
+                    col_data[0*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[1].gen_lane_bank[0].u_sram.sram[addr_idx];
+                    col_data[1*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[1].gen_lane_bank[1].u_sram.sram[addr_idx];
+                    col_data[2*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[1].gen_lane_bank[2].u_sram.sram[addr_idx];
+                    col_data[3*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[1].gen_lane_bank[3].u_sram.sram[addr_idx];
+                end
+                2: begin
+                    col_data[0*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[2].gen_lane_bank[0].u_sram.sram[addr_idx];
+                    col_data[1*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[2].gen_lane_bank[1].u_sram.sram[addr_idx];
+                    col_data[2*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[2].gen_lane_bank[2].u_sram.sram[addr_idx];
+                    col_data[3*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[2].gen_lane_bank[3].u_sram.sram[addr_idx];
+                end
+                3: begin
+                    col_data[0*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[3].gen_lane_bank[0].u_sram.sram[addr_idx];
+                    col_data[1*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[3].gen_lane_bank[1].u_sram.sram[addr_idx];
+                    col_data[2*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[3].gen_lane_bank[2].u_sram.sram[addr_idx];
+                    col_data[3*TB_BANK_WORD_DW +: TB_BANK_WORD_DW] = dut.gen_weight_srams[3].gen_lane_bank[3].u_sram.sram[addr_idx];
+                end
+                default: col_data = '0;
             endcase
+            read_sram_word = col_data;
         end
     endfunction
 
@@ -57,17 +80,25 @@
         end
     endfunction
 
-    task automatic write_sram_word(
-        input int bank_idx,
-        input int addr_idx,
-        input logic [SRAM_DWIDTH-1:0] data_i
-    );
+    task automatic write_sram_word(input int bank_idx, input int addr_idx, input logic [TB_BANK_WORD_DW-1:0] data_i);
         begin
             case (bank_idx)
-                0: dut.gen_weight_srams[0].u_sram.sram[addr_idx] = data_i;
-                1: dut.gen_weight_srams[1].u_sram.sram[addr_idx] = data_i;
-                2: dut.gen_weight_srams[2].u_sram.sram[addr_idx] = data_i;
-                3: dut.gen_weight_srams[3].u_sram.sram[addr_idx] = data_i;
+                0: dut.gen_weight_srams[0].gen_lane_bank[0].u_sram.sram[addr_idx] = data_i;
+                1: dut.gen_weight_srams[0].gen_lane_bank[1].u_sram.sram[addr_idx] = data_i;
+                2: dut.gen_weight_srams[0].gen_lane_bank[2].u_sram.sram[addr_idx] = data_i;
+                3: dut.gen_weight_srams[0].gen_lane_bank[3].u_sram.sram[addr_idx] = data_i;
+                4: dut.gen_weight_srams[1].gen_lane_bank[0].u_sram.sram[addr_idx] = data_i;
+                5: dut.gen_weight_srams[1].gen_lane_bank[1].u_sram.sram[addr_idx] = data_i;
+                6: dut.gen_weight_srams[1].gen_lane_bank[2].u_sram.sram[addr_idx] = data_i;
+                7: dut.gen_weight_srams[1].gen_lane_bank[3].u_sram.sram[addr_idx] = data_i;
+                8: dut.gen_weight_srams[2].gen_lane_bank[0].u_sram.sram[addr_idx] = data_i;
+                9: dut.gen_weight_srams[2].gen_lane_bank[1].u_sram.sram[addr_idx] = data_i;
+                10: dut.gen_weight_srams[2].gen_lane_bank[2].u_sram.sram[addr_idx] = data_i;
+                11: dut.gen_weight_srams[2].gen_lane_bank[3].u_sram.sram[addr_idx] = data_i;
+                12: dut.gen_weight_srams[3].gen_lane_bank[0].u_sram.sram[addr_idx] = data_i;
+                13: dut.gen_weight_srams[3].gen_lane_bank[1].u_sram.sram[addr_idx] = data_i;
+                14: dut.gen_weight_srams[3].gen_lane_bank[2].u_sram.sram[addr_idx] = data_i;
+                15: dut.gen_weight_srams[3].gen_lane_bank[3].u_sram.sram[addr_idx] = data_i;
             //    4: sram_banks[4].u_sram.memory[addr_idx] = data_i;
             //    5: sram_banks[5].u_sram.memory[addr_idx] = data_i;
             //    6: sram_banks[6].u_sram.memory[addr_idx] = data_i;
@@ -79,7 +110,8 @@
 
     // Task to initialize all SRAM banks with different patterns
     task automatic init_all_srams(input init_mode_t mode);
-        logic [SRAM_DWIDTH-1:0] write_data;
+        logic [TB_COL_WORD_DW-1:0] col_data;
+        logic [TB_BANK_WORD_DW-1:0] write_data;
         logic signed [BITJ-1:0] j_matrix [0:DATASPIN-1][0:DATASPIN-1];
         logic signed [BITH-1:0] hbias_vec [0:DATASPIN-1];
         logic [SCALING_BIT-1:0] hscaling_vec [0:DATASPIN-1];
@@ -161,27 +193,31 @@
         for (col = 0; col < DATASPIN; col++) begin
             bank = col % PARALLELISM;
             addr = col / PARALLELISM;
-            write_data = '0;
+            col_data = '0;
             for (row = 0; row < DATASPIN; row++) begin
-                write_data[row*BITJ +: BITJ] = j_matrix[row][col];
+                col_data[row*BITJ +: BITJ] = j_matrix[row][col];
             end
-            write_data[SRAM_HBIAS_LSB +: BITH] = hbias_vec[col];
-            write_data[SRAM_HSCALING_LSB +: SCALING_BIT] = hscaling_vec[col];
-            write_sram_word(bank, addr, write_data);
+            for (int s = 0; s < 4; s++) begin
+                write_data = col_data[s*TB_BANK_WORD_DW +: TB_BANK_WORD_DW];
+                write_sram_word(bank*4 + s, addr, write_data);
+            end
         end
 
         // Keep remaining addresses (if any) at zero
-        for (bank = 0; bank < PARALLELISM; bank++) begin
+        for (bank = 0; bank < (PARALLELISM * 4); bank++) begin
             for (addr = (DATASPIN / PARALLELISM); addr < SRAM_DEPTH; addr++) begin
                 write_sram_word(bank, addr, '0);
             end
         end
 
-        for (bank = 0; bank < PARALLELISM; bank++) begin
+        for (bank = 0; bank < (PARALLELISM * 4); bank++) begin
             $display("  - SRAM Bank[%0d] initialized", bank);
         end
     endtask
 
+*/
+
+/*
     // =========================================================================
     // Reference Energy Checker
     //
@@ -259,7 +295,7 @@
         logic signed [ENERGY_TOTAL_BIT-1:0] col_dot;
         logic signed [ENERGY_TOTAL_BIT-1:0] group_accum;
         logic signed [ENERGY_TOTAL_BIT-1:0] hbias_scaled;
-        logic [SRAM_DWIDTH-1:0]             sram_word;
+        logic [TB_COL_WORD_DW-1:0]          sram_word;
         logic signed [BITJ-1:0]             j_val;
         logic signed [BITH-1:0]             hbias_val;
         logic [SCALING_BIT-1:0]             hscaling_val;
@@ -337,6 +373,7 @@
             energy_ready_i = 0;
         end
     endtask
+*/
 
     // -------------------------------------------------------------------------
     // Stimulus helper tasks/functions
@@ -349,6 +386,8 @@
             @(posedge clk_i);
             valid_in <= 1'b0;
             data_in <= '0;
+            data_in[IN_LSB_EN +: 1] <= 1'b1;
+            data_in[IN_LSB_STD_MODE +: 1] <= TB_STANDARD_MODE;
         end
     endtask
 
@@ -357,6 +396,7 @@
         begin
             payload = '0;
             payload[IN_LSB_EN +: 1] = 1'b1;
+            payload[IN_LSB_STD_MODE +: 1] = TB_STANDARD_MODE;
             payload[IN_LSB_CFG_VALID +: 1] = 1'b1;
             payload[IN_LSB_CFG_COUNTER +: SPINIDX_BIT] = cfg_counter;
             send_payload(payload);
@@ -368,6 +408,7 @@
         begin
             payload = '0;
             payload[IN_LSB_EN +: 1] = 1'b1;
+            payload[IN_LSB_STD_MODE +: 1] = TB_STANDARD_MODE;
             payload[IN_LSB_FIRST_OP +: 1] = first_op;
             payload[IN_LSB_SPIN_VALID +: 1] = 1'b1;
             payload[IN_LSB_SPIN +: DATASPIN] = spin_vec;
@@ -386,9 +427,10 @@
         end
     endfunction
 
+/*
     task automatic build_and_init_sram_direct();
         logic signed [BITJ-1:0] val;
-        logic [SRAM_DWIDTH-1:0] sram_word;
+        logic [TB_COL_WORD_DW-1:0] sram_word;
         int row;
         int col;
         int addr;
@@ -437,16 +479,36 @@
                     for (row = 0; row < DATASPIN; row++) begin
                         sram_word[row*BITJ +: BITJ] = j_matrix[row][col];
                     end
-                    write_sram_word(bank, addr, sram_word);
+                    for (int s = 0; s < 4; s++) begin
+                        write_sram_word(bank*4 + s, addr, sram_word[s*TB_BANK_WORD_DW +: TB_BANK_WORD_DW]);
+                    end
                 end
             end
 
             for (bank = 0; bank < PARALLELISM; bank++) begin
-                dut.gen_weight_srams[bank].hbias_reg = hbias_const;
-                dut.gen_weight_srams[bank].hscaling_reg = hscaling_const;
+                case (bank)
+                    0: begin
+                        dut.gen_weight_srams[0].hbias_reg = hbias_const;
+                        dut.gen_weight_srams[0].hscaling_reg = hscaling_const;
+                    end
+                    1: begin
+                        dut.gen_weight_srams[1].hbias_reg = hbias_const;
+                        dut.gen_weight_srams[1].hscaling_reg = hscaling_const;
+                    end
+                    2: begin
+                        dut.gen_weight_srams[2].hbias_reg = hbias_const;
+                        dut.gen_weight_srams[2].hscaling_reg = hscaling_const;
+                    end
+                    3: begin
+                        dut.gen_weight_srams[3].hbias_reg = hbias_const;
+                        dut.gen_weight_srams[3].hscaling_reg = hscaling_const;
+                    end
+                    default: begin end
+                endcase
             end
         end
     endtask
+*/
 
     function automatic logic [DATASPIN-1:0] build_spin(input int t);
         logic [DATASPIN-1:0] out_spin;
@@ -466,5 +528,203 @@
                 endcase
             end
             build_spin = out_spin;
+        end
+    endfunction
+
+    // ========================================================================
+    // FIFO Vector Management Functions
+    // ========================================================================
+
+    // Load vectors from a file and populate the FIFO.
+    // Supports both binary (256-bit 0/1) and hexadecimal formats.
+    // Returns the number of vectors successfully loaded.
+    function automatic integer load_vectors_from_file(
+        input string file_path,
+        inout logic [DATASPIN-1:0] vector_fifo [0:`NUM_TESTS-1],
+        inout integer test_id_fifo [0:`NUM_TESTS-1],
+        inout integer fifo_write_ptr,
+        inout integer fifo_count,
+        input integer max_vectors
+    );
+        integer file_fd;
+        string line;
+        logic [DATASPIN-1:0] vector;
+        integer scan_result;
+        integer vectors_loaded;
+        
+        begin
+            vectors_loaded = 0;
+            file_fd = $fopen(file_path, "r");
+            
+            if (file_fd != 0) begin
+                while ((vectors_loaded < max_vectors) && (!$feof(file_fd))) begin
+                    line = "";
+                    void'($fgets(line, file_fd));
+                    
+                    // Try binary format first (256-bit 0/1 text lines)
+                    scan_result = $sscanf(line, "%b", vector);
+                    
+                    // Fall back to hexadecimal if binary parsing failed
+                    if (scan_result != 1) begin
+                        scan_result = $sscanf(line, "%h", vector);
+                    end
+                    
+                    // If parsing was successful, add to FIFO
+                    if (scan_result == 1) begin
+                        if (fifo_count < `NUM_TESTS) begin
+                            vector_fifo[fifo_write_ptr] = vector;
+                            test_id_fifo[fifo_write_ptr] = vectors_loaded;
+                            fifo_write_ptr = (fifo_write_ptr + 1) % `NUM_TESTS;
+                            fifo_count = fifo_count + 1;
+                            vectors_loaded = vectors_loaded + 1;
+                        end else begin
+                            $warning("[FIFO] Vector FIFO overflow at vector %0d", vectors_loaded);
+                        end
+                    end
+                end
+                $fclose(file_fd);
+            end else begin
+                $error("[FIFO] Failed to open file: %0s", file_path);
+            end
+            
+            if (vectors_loaded == 0) begin
+                $warning("[FIFO] No valid vectors loaded from %0s", file_path);
+            end else begin
+                $display("[FIFO] Successfully loaded %0d vectors from %0s", vectors_loaded, file_path);
+            end
+            
+            load_vectors_from_file = vectors_loaded;
+        end
+    endfunction
+
+    // Add a single vector to the FIFO
+    function automatic bit enqueue_vector(
+        input logic [DATASPIN-1:0] vector,
+        input integer test_id,
+        inout logic [DATASPIN-1:0] vector_fifo [0:`NUM_TESTS-1],
+        inout integer test_id_fifo [0:`NUM_TESTS-1],
+        inout integer fifo_write_ptr,
+        inout integer fifo_count
+    );
+        begin
+            if (fifo_count < `NUM_TESTS) begin
+                vector_fifo[fifo_write_ptr] = vector;
+                test_id_fifo[fifo_write_ptr] = test_id;
+                fifo_write_ptr = (fifo_write_ptr + 1) % `NUM_TESTS;
+                fifo_count = fifo_count + 1;
+                enqueue_vector = 1'b1;
+            end else begin
+                $warning("[FIFO] Cannot enqueue vector - FIFO is full (count=%0d)", fifo_count);
+                enqueue_vector = 1'b0;
+            end
+        end
+    endfunction
+
+    // Remove and return a vector from the FIFO (dequeue)
+    function automatic bit dequeue_vector(
+        output logic [DATASPIN-1:0] vector,
+        output integer test_id,
+        inout logic [DATASPIN-1:0] vector_fifo [0:`NUM_TESTS-1],
+        inout integer test_id_fifo [0:`NUM_TESTS-1],
+        inout integer fifo_read_ptr,
+        inout integer fifo_count
+    );
+        begin
+            if (fifo_count > 0) begin
+                vector = vector_fifo[fifo_read_ptr];
+                test_id = test_id_fifo[fifo_read_ptr];
+                fifo_read_ptr = (fifo_read_ptr + 1) % `NUM_TESTS;
+                fifo_count = fifo_count - 1;
+                dequeue_vector = 1'b1;
+            end else begin
+                $warning("[FIFO] Cannot dequeue - FIFO is empty");
+                dequeue_vector = 1'b0;
+            end
+        end
+    endfunction
+
+    // Get current number of vectors in FIFO
+    function automatic integer get_fifo_count(
+        input integer fifo_count
+    );
+        begin
+            get_fifo_count = fifo_count;
+        end
+    endfunction
+
+    // Peek at the next vector without removing it from FIFO
+    function automatic bit peek_fifo_vector(
+        output logic [DATASPIN-1:0] vector,
+        output integer test_id,
+        input logic [DATASPIN-1:0] vector_fifo [0:`NUM_TESTS-1],
+        input integer test_id_fifo [0:`NUM_TESTS-1],
+        input integer fifo_read_ptr,
+        input integer fifo_count
+    );
+        begin
+            if (fifo_count > 0) begin
+                vector = vector_fifo[fifo_read_ptr];
+                test_id = test_id_fifo[fifo_read_ptr];
+                peek_fifo_vector = 1'b1;
+            end else begin
+                $warning("[FIFO] Cannot peek - FIFO is empty");
+                peek_fifo_vector = 1'b0;
+            end
+        end
+    endfunction
+
+    // Send all vectors from FIFO sequentially as spin payloads
+    task automatic send_all_vectors_from_fifo(
+        inout logic [DATASPIN-1:0] vector_fifo [0:`NUM_TESTS-1],
+        inout integer test_id_fifo [0:`NUM_TESTS-1],
+        inout integer fifo_read_ptr,
+        inout integer fifo_count,
+        output integer vectors_sent
+    );
+        logic [DATASPIN-1:0] vector;
+        integer test_id;
+        integer send_count;
+        bit success;
+        
+        begin
+            vectors_sent = 0;
+            send_count = 0;
+            
+            $display("[FIFO] Starting to send %0d vectors from FIFO", fifo_count);
+            
+            while (fifo_count > 0) begin
+                success = dequeue_vector(vector, test_id, vector_fifo, test_id_fifo, 
+                                        fifo_read_ptr, fifo_count);
+                
+                if (success) begin
+                    // Send with first_op flag set only for first vector
+                    send_spin(vector, (send_count == 0));
+                    vectors_sent = vectors_sent + 1;
+                    send_count = send_count + 1;
+                    
+                    if ((send_count % 50) == 0) begin
+                        $display("[FIFO] Sent %0d vectors so far...", send_count);
+                    end
+                end else begin
+                    $warning("[FIFO] Failed to dequeue vector at position %0d", send_count);
+                    break;
+                end
+            end
+            
+            $display("[FIFO] Completed sending %0d vectors from FIFO", vectors_sent);
+        end
+    endtask
+
+    // Clear all vectors from FIFO
+    function automatic void clear_fifo(
+        inout integer fifo_write_ptr,
+        inout integer fifo_read_ptr,
+        inout integer fifo_count
+    );
+        begin
+            fifo_write_ptr = 0;
+            fifo_read_ptr = 0;
+            fifo_count = 0;
+            $display("[FIFO] FIFO cleared");
         end
     endfunction

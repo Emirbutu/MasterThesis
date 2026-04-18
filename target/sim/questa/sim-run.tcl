@@ -32,8 +32,12 @@ if { $FORCE_BUILD == 1 } {
     source ${SCRIPT_DIR}/defines.tcl
 }
 
-# Verify library mapping
-vmap
+# Ensure work library exists and remap even if modelsim.ini has stale path.
+if { ![file exists "${WLIB}/_info"] } {
+    puts "Info: Missing or invalid Questa work library at ${WLIB}; recreating."
+    vlib ${WLIB}
+}
+vmap work ${WLIB}
 
 # Apply the IterationLimit attribute
 # set IterationLimit 20000000

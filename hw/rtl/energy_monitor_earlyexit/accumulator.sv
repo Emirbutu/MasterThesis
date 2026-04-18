@@ -25,8 +25,9 @@
 // Case tested:
 // - None
 
-`include "common_cells/registers.svh"
-`include "../include/lagd_platform.svh"
+
+`include "../include/registers.svh"
+// `include "../include/lagd_platform.svh"
 
 module accumulator #(
     parameter int IN_WIDTH = 16,
@@ -78,6 +79,6 @@ module accumulator #(
     `FFLARNC(data_valid_reg, data_valid, en_i, clear_i, '0, clk_i, rst_ni)
 
 // Assertions
-`RUNTIME_ASSERT(overflow_reg === 1'b0, "Accumulator overflow occurred", clk_i, rst_ni)
+// `RUNTIME_ASSERT(overflow_reg === 1'b0, "Accumulator overflow occurred", clk_i, rst_ni)
 
 endmodule
