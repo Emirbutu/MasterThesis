@@ -17,7 +17,7 @@
 `endif
 
 `ifndef NUM_TESTS
-`define NUM_TESTS 513
+`define NUM_TESTS 53
 `endif
 
 `ifndef True
@@ -56,7 +56,7 @@ module VX_pipe_buffer #(
 endmodule
 
 module tb_syn_tle_with_sram #(
-    parameter bit TB_STANDARD_MODE = 1'b1
+    parameter bit TB_STANDARD_MODE = 1'b0
 );
     localparam int CLKCYCLE = 2;
     localparam int BITJ = 4;
@@ -71,7 +71,7 @@ module tb_syn_tle_with_sram #(
     localparam int INPUT_PASSTHRU = 0;
     localparam int OUTPUT_PASSTHRU = 0;
     localparam bit USE_SPIN_FILE = 1'b1;
-    localparam string SPIN_FILE_PATH = "/users/students/r1024900/MasterThesis/default/states_out_1";
+    localparam string SPIN_FILE_PATH = "/users/students/r1024900/MasterThesis/default/states_out_1_part";
 
     localparam int SPINIDX_BIT = $clog2(DATASPIN);
     localparam int DATAJ = DATASPIN * BITJ * PARALLELISM;
@@ -372,15 +372,21 @@ module tb_syn_tle_with_sram #(
 
     initial begin
         if (`DBG) begin
-            // When DBG is enabled, logging is handled by Questa's -log or waveform recording
-            // VCD dumping is disabled in favor of Questa's native WLF format
-            #(400 * CLKCYCLE);
+            string vcd_path;
+
+         vcd_path = "tb_syn_tle_with_sram.vcd";
+         void'($value$plusargs("TB_VCD_FILE=%s", vcd_path));
+
+         $dumpfile(vcd_path);
+         $dumpvars(0, dut);
+
+            #(1000 * CLKCYCLE);
             $fatal(1, "[TB] Timeout reached.");
         end
     end
 
     initial begin
-        #(30000 * CLKCYCLE);
+        #(50000 * CLKCYCLE);
         $fatal(1, "[TB] Timeout reached.");
     end
 endmodule

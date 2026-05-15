@@ -24,7 +24,7 @@
 //   Q[255:0]: Data output (256 bits)
 //   BWEB[255:0]: Bit write enable (active low, per-bit)
 //   RTSEL[1:0]: Read timing select (tie to 2'b10 for normal operation)
-//   WTSEL[1:0]: Write timing select (tie to 2'b01 for normal operation)
+//   WTSEL[1:0]: Write timing select (tie to 2'b00 for normal operation per SRAM macro model)
 //   SD: Shutdown (tie low for normal operation)
 //   SLP: Sleep mode (tie low for normal operation)
 //   BIST: Built-in self test (tie low for normal operation)

@@ -51,4 +51,4 @@ $(TEST_PATH)/work/${SIM_NAME}.wlf: $(TEST_PATH)/work/work_${SIM_NAME} $(TEST_FIL
 questa-run: $(TEST_PATH)/work/${SIM_NAME}.wlf
 
 clean:
-	rm -rf work transcript *.vcd
+	rm -rf work transcript *.vcd spin_energy_log.csv spin_energy_compare.csv

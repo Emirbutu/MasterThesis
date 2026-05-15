@@ -150,22 +150,22 @@ module syn_tle_with_sram #(
                     : SRAM_WORD_DW;
                 localparam int BANK_FLAT = i * SRAM_BANKS_PER_LANE + b;
                 localparam INIT_FILE =
-                    (BANK_FLAT == 0)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank00.cde" :
-                    (BANK_FLAT == 1)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank01.cde" :
-                    (BANK_FLAT == 2)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank02.cde" :
-                    (BANK_FLAT == 3)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank03.cde" :
-                    (BANK_FLAT == 4)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank04.cde" :
-                    (BANK_FLAT == 5)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank05.cde" :
-                    (BANK_FLAT == 6)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank06.cde" :
-                    (BANK_FLAT == 7)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank07.cde" :
-                    (BANK_FLAT == 8)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank08.cde" :
-                    (BANK_FLAT == 9)  ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank09.cde" :
-                    (BANK_FLAT == 10) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank10.cde" :
-                    (BANK_FLAT == 11) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank11.cde" :
-                    (BANK_FLAT == 12) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank12.cde" :
-                    (BANK_FLAT == 13) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank13.cde" :
-                    (BANK_FLAT == 14) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank14.cde" :
-                    "TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank15.cde";
+                    (BANK_FLAT == 0)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank00.cde" :
+                    (BANK_FLAT == 1)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank01.cde" :
+                    (BANK_FLAT == 2)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank02.cde" :
+                    (BANK_FLAT == 3)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank03.cde" :
+                    (BANK_FLAT == 4)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank04.cde" :
+                    (BANK_FLAT == 5)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank05.cde" :
+                    (BANK_FLAT == 6)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank06.cde" :
+                    (BANK_FLAT == 7)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank07.cde" :
+                    (BANK_FLAT == 8)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank08.cde" :
+                    (BANK_FLAT == 9)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank09.cde" :
+                    (BANK_FLAT == 10) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank10.cde" :
+                    (BANK_FLAT == 11) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank11.cde" :
+                    (BANK_FLAT == 12) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank12.cde" :
+                    (BANK_FLAT == 13) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank13.cde" :
+                    (BANK_FLAT == 14) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank14.cde" :
+                    "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank15.cde";
 
                 wire [0:0] sram_req_1p;
                 wire [0:0] sram_we_1p;
@@ -216,10 +216,10 @@ module syn_tle_with_sram #(
         for (i = 0; i < PARALLELISM; i++) begin : gen_hbias_scaling_srams
             localparam int HS_BITS = BITH + SCALING_BIT;
             localparam INIT_FILE_HS =
-                (i == 0) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank00.cde" :
-                (i == 1) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank01.cde" :
-                (i == 2) ? "TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank02.cde" :
-                           "TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank03.cde";
+                (i == 0) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank00.cde" :
+                (i == 1) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank01.cde" :
+                (i == 2) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank02.cde" :
+                           "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_hbias_scaling_bank03.cde";
 
             wire [0:0] hs_sram_req_1p;
             wire [0:0] hs_sram_we_1p;
