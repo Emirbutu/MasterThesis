@@ -164,7 +164,7 @@ module energy_monitor #(
     logic energy_handshake;
     logic [PIPESMID:0] weight_handshake_accum;
     localparam int WEIGHT_PIPE_DATAW = DATAJ + DATAH + DATASCALING;
-
+    localparam logic signed [ENERGY_TOTAL_BIT-1:0] ENERGY_RESET = -32'sd876;
     logic [PIPESINTF:0][SPINIDX_BIT-1:0] config_counter_pipe_stages;
     logic [PIPESINTF:0] config_valid_pipe_stages;
     logic [PIPESINTF:0][DATASPIN-1:0] spin_pipe_stages;
@@ -185,7 +185,7 @@ module energy_monitor #(
     `FFL(spin_handshake_d, spin_handshake, 1'b1, 1'b0, clk_i, rst_ni)
     `FFLARNC(first_operation_sampled, 1'b1, first_operation_i, energy_handshake, 1'b0, clk_i, rst_ni)
     `FF(energy_valid_o_d, energy_valid_o, 1'b0, clk_i, rst_ni)
-    `FFL(energy_o_stored, energy_o, energy_valid_o_pulse, 1'b0, clk_i, rst_ni)
+    `FFL(energy_o_stored, energy_o, energy_valid_o_pulse, ENERGY_RESET, clk_i, rst_ni)
     assign spin_ready_o = spin_ready_pipe;
     `FFLARNC(stop_sampled, 1'b1, stop_i, energy_handshake && !stop_i, 1'b0, clk_i, rst_ni)
     assign weight_ready_masked = weight_ready_pipe && !stop_sampled;
@@ -273,20 +273,20 @@ module energy_monitor #(
     );
     
     // Counter path
-    step_counter #(
-        .COUNTER_BITWIDTH(SPINIDX_BIT),
-        .PARALLELISM(PARALLELISM)
-    ) u_step_counter (
-        .clk_i(clk_i),
-        .rst_ni(rst_ni),
-        .en_i(en_i),
-        .load_i(config_valid_pipe && config_ready_pipe),
-        .d_i(config_counter_pipe),
-        .recount_en_i(spin_handshake),
-        .step_en_i(weight_handshake),
-        .q_o(counter_q),
-        .overflow_o(counter_ready)
-    );
+    //  step_counter #(
+    //      .COUNTER_BITWIDTH(SPINIDX_BIT),
+    //      .PARALLELISM(PARALLELISM)
+    //  ) u_step_counter (
+    //      .clk_i(clk_i),
+   //       .rst_ni(rst_ni),
+    //      .en_i(en_i),
+    //      .load_i(config_valid_pipe && config_ready_pipe),
+    //      .d_i(config_counter_pipe),
+    //      .recount_en_i(spin_handshake),
+    //      .step_en_i(weight_handshake),
+    //      .q_o(counter_q),
+    //      .overflow_o(counter_ready)
+    //  );
     // Counter path for energy difference calculation
     step_counter #(
         .COUNTER_BITWIDTH($clog2(DATASPIN/PARALLELISM+1)),

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 from .data_loader import EarlyExitCaseData
+from .energy_calc import compute_case_percentage_stop_accuracy, compute_case_wrong_decision_rate
 
 
 def plot_matrix_image(
@@ -360,6 +361,382 @@ def plot_transition_cycle_counts(
     ax.set_ylabel("Internal fetch cycles")
     ax.grid(True, alpha=0.3, axis="y")
     ax.legend(loc="upper right")
+
+    fig.tight_layout()
+
+    if output_path is not None:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out, bbox_inches="tight")
+
+    if show:
+        plt.show()
+
+    return fig, ax
+
+
+def plot_percentage_stop_accuracy(
+    analysis: Mapping[str, object],
+    title: str = "Early-Stop Accuracy (%)",
+    figsize: tuple[float, float] = (11.0, 5.5),
+    dpi: int = 150,
+    output_path: str | Path | None = None,
+    show: bool = False,
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plot the per-transition early-stop accuracy as a percentage.
+
+    Args:
+        analysis: Dictionary returned by compute_case_percentage_stop_accuracy.
+        title: Plot title.
+        figsize: Figure size.
+        dpi: Figure DPI.
+        output_path: Optional output image path.
+        show: Whether to call plt.show().
+
+    Returns:
+        Figure and axis.
+    """
+    transition_index = np.asarray(analysis["transition_index"], dtype=np.int64)
+    accuracy_percent = np.asarray(analysis["accuracy_percent"], dtype=np.float64)
+    executed_cycles = np.asarray(analysis["executed_cycles"], dtype=np.int64)
+    total_cycles = np.asarray(analysis["total_cycles"], dtype=np.int64)
+    reserve_fraction = float(np.asarray(analysis.get("reserve_fraction", np.asarray([0.0])))[0])
+
+    if transition_index.ndim != 1:
+        raise ValueError(f"transition_index must be 1D, got shape {transition_index.shape}")
+    if accuracy_percent.shape != transition_index.shape:
+        raise ValueError(
+            f"accuracy_percent must match transition_index shape, got {accuracy_percent.shape} and {transition_index.shape}"
+        )
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    ax.plot(transition_index, accuracy_percent, color="#1f77b4", linewidth=1.6, label="Accuracy ratio (%)")
+    ax.axhline(100.0, color="#d62728", linestyle="--", linewidth=1.0, alpha=0.8, label="Reference 100%")
+
+    ax.set_title(f"{title} (reserve last {reserve_fraction * 100:.1f}%)")
+    ax.set_xlabel("Iteration transition")
+    ax.set_ylabel("Early-exit value / full value (%)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper right")
+
+    ax2 = ax.twinx()
+    ax2.step(transition_index, executed_cycles, where="mid", color="#ff7f0e", linewidth=1.2, alpha=0.65, label="Executed cycles")
+    ax2.plot(transition_index, total_cycles, color="#2ca02c", linewidth=1.0, alpha=0.45, label="Total cycles")
+    ax2.set_ylabel("Cycles")
+
+    handles_1, labels_1 = ax.get_legend_handles_labels()
+    handles_2, labels_2 = ax2.get_legend_handles_labels()
+    ax2.legend(handles_1 + handles_2, labels_1 + labels_2, loc="lower right")
+
+    fig.tight_layout()
+
+    if output_path is not None:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out, bbox_inches="tight")
+
+    if show:
+        plt.show()
+
+    return fig, ax
+
+
+def plot_percentage_stop_drop_comparison(
+    case_data: EarlyExitCaseData,
+    reserve_fractions: Sequence[float] = (0.05, 0.10, 0.15, 0.20, 0.25),
+    mode: str = "propagated",
+    title: str = "Early-Stop Accuracy Drop Comparison",
+    figsize: tuple[float, float] = (12.0, 6.0),
+    dpi: int = 150,
+    output_path: str | Path | None = None,
+    show: bool = False,
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plot accuracy drop for several reserve fractions on the same transition axis.
+
+    The y-axis shows the drop from ideal accuracy, computed as:
+        drop_percent = 100 - accuracy_percent
+
+    By default the helper uses propagated accumulation, so each transition's
+    early-exit energy is built on top of the previous approximate energy and
+    the drop can grow over time.
+
+    Args:
+        case_data: Loaded case data.
+        reserve_fractions: Stop percentages to compare, for example 0.05 for 5%.
+        mode: Accuracy accumulation mode passed to
+            compute_case_percentage_stop_accuracy.
+        title: Plot title.
+        figsize: Figure size.
+        dpi: Figure DPI.
+        output_path: Optional output image path.
+        show: Whether to call plt.show().
+
+    Returns:
+        Figure and axis.
+    """
+    if not reserve_fractions:
+        raise ValueError("reserve_fractions must not be empty")
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    color_map = plt.get_cmap("tab10")
+
+    for idx, reserve_fraction in enumerate(reserve_fractions):
+        analysis = compute_case_percentage_stop_accuracy(
+            case_data,
+            reserve_fraction=float(reserve_fraction),
+            mode=mode,
+        )
+        transition_index = np.asarray(analysis["transition_index"], dtype=np.int64)
+        accuracy_percent = np.asarray(analysis["accuracy_percent"], dtype=np.float64)
+        accuracy_drop = 100.0 - accuracy_percent
+
+        ax.plot(
+            transition_index,
+            accuracy_drop,
+            linewidth=1.6,
+            color=color_map(idx % 10),
+            label=f"reserve {float(reserve_fraction) * 100:.0f}%",
+        )
+
+    ax.set_title(title)
+    ax.set_xlabel("Iteration transition")
+    ax.set_ylabel("Accuracy drop (%) = 100 - accuracy")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+
+    fig.tight_layout()
+
+    if output_path is not None:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out, bbox_inches="tight")
+
+    if show:
+        plt.show()
+
+    return fig, ax
+
+
+def plot_wrong_decision_rate_comparison(
+    case_data: EarlyExitCaseData,
+    reserve_fractions: Sequence[float] = (0.05, 0.10, 0.15, 0.20, 0.25, 0.30),
+    zero_is_decrease: bool = True,
+    zero_is_increase: bool = False,
+    title: str = "Wrong Decision Rate vs Reserve Fraction",
+    figsize: tuple[float, float] = (11.5, 6.0),
+    dpi: int = 150,
+    output_path: str | Path | None = None,
+    show: bool = False,
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plot the percentage of wrong sign decisions for several reserve fractions.
+
+    A wrong decision is a propagated incremental update whose sign is opposite
+    to the sign of the full-energy transition. When zero_is_decrease is True,
+    a zero delta is treated as a decrease. When zero_is_increase is True, a
+    zero delta is treated as an increase.
+
+    Args:
+        case_data: Loaded case data.
+        reserve_fractions: Stop percentages to compare, for example 0.05 for 5%.
+        title: Plot title.
+        figsize: Figure size.
+        dpi: Figure DPI.
+        output_path: Optional output image path.
+        show: Whether to call plt.show().
+
+    Returns:
+        Figure and axis.
+    """
+    if not reserve_fractions:
+        raise ValueError("reserve_fractions must not be empty")
+
+    fractions = np.asarray([float(value) for value in reserve_fractions], dtype=np.float64)
+    wrong_decision_rates = np.zeros_like(fractions, dtype=np.float64)
+    wrong_decision_rates_all = np.zeros_like(fractions, dtype=np.float64)
+    accuracy_percent = np.zeros_like(fractions, dtype=np.float64)
+
+    for idx, reserve_fraction in enumerate(fractions):
+        analysis = compute_case_wrong_decision_rate(
+            case_data,
+            reserve_fraction=float(reserve_fraction),
+            zero_is_decrease=zero_is_decrease,
+            zero_is_increase=zero_is_increase,
+        )
+        wrong_decision_rates[idx] = float(np.asarray(analysis["wrong_decision_rate"], dtype=np.float64)[0])
+        wrong_decision_rates_all[idx] = float(np.asarray(analysis["wrong_decision_rate_all"], dtype=np.float64)[0])
+        accuracy_percent[idx] = float(np.asarray(analysis["accuracy_percent"], dtype=np.float64)[0])
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    bars = ax.bar(fractions * 100.0, wrong_decision_rates, color="#d62728", width=3.0, alpha=0.85)
+    ax.set_title(title)
+    ax.set_xlabel("Reserved last cycles (%)")
+    if zero_is_increase:
+        y_label = "Wrong decision rate (%)"
+    elif zero_is_decrease:
+        y_label = "Wrong decision rate (%)"
+    else:
+        y_label = "Wrong decision rate among nonzero transitions (%)"
+    ax.set_ylabel(y_label)
+    ax.set_ylim(0.0, max(100.0, float(np.max(wrong_decision_rates)) * 1.15))
+    ax.set_xticks(fractions * 100.0)
+    ax.set_xticklabels([f"{int(round(value * 100))}%" for value in fractions])
+    ax.grid(True, axis="y", alpha=0.3)
+
+    for bar, wrong_rate in zip(bars, wrong_decision_rates, strict=False):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            bar.get_height(),
+            f"{wrong_rate:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+
+    fig.tight_layout()
+
+    if output_path is not None:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out, bbox_inches="tight")
+
+    if show:
+        plt.show()
+
+    return fig, ax
+
+
+def plot_percentage_stop_drop_comparison_avg(
+    case_data_1: EarlyExitCaseData,
+    case_data_2: EarlyExitCaseData,
+    reserve_fractions: Sequence[float] = (0.05, 0.10, 0.15, 0.20, 0.25),
+    mode: str = "propagated",
+    title: str = "Average Early-Stop Accuracy Drop (cases 1 & 2)",
+    figsize: tuple[float, float] = (12.0, 6.0),
+    dpi: int = 150,
+    output_path: str | Path | None = None,
+    show: bool = False,
+) -> tuple[plt.Figure, plt.Axes]:
+    """Compute and plot the average accuracy drop across two cases.
+
+    This helper runs `compute_case_percentage_stop_accuracy` for both cases
+    and plots the element-wise average of the drops (100 - accuracy_percent).
+    """
+    if not reserve_fractions:
+        raise ValueError("reserve_fractions must not be empty")
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    color_map = plt.get_cmap("tab10")
+
+    for idx, reserve_fraction in enumerate(reserve_fractions):
+        a1 = compute_case_percentage_stop_accuracy(case_data_1, reserve_fraction=float(reserve_fraction), mode=mode)
+        a2 = compute_case_percentage_stop_accuracy(case_data_2, reserve_fraction=float(reserve_fraction), mode=mode)
+
+        t1 = np.asarray(a1["transition_index"], dtype=np.int64)
+        t2 = np.asarray(a2["transition_index"], dtype=np.int64)
+        min_n = min(t1.shape[0], t2.shape[0])
+
+        drop1 = 100.0 - np.asarray(a1["accuracy_percent"], dtype=np.float64)[:min_n]
+        drop2 = 100.0 - np.asarray(a2["accuracy_percent"], dtype=np.float64)[:min_n]
+        avg_drop = 0.5 * (drop1 + drop2)
+
+        ax.plot(
+            np.arange(1, min_n + 1),
+            avg_drop,
+            linewidth=1.6,
+            color=color_map(idx % 10),
+            label=f"reserve {float(reserve_fraction) * 100:.0f}%",
+        )
+
+    ax.set_title(title)
+    ax.set_xlabel("Iteration transition")
+    ax.set_ylabel("Average accuracy drop (%) = 100 - accuracy")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+
+    fig.tight_layout()
+
+    if output_path is not None:
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out, bbox_inches="tight")
+
+    if show:
+        plt.show()
+
+    return fig, ax
+
+
+def plot_wrong_decision_rate_comparison_avg(
+    case_data_1: EarlyExitCaseData,
+    case_data_2: EarlyExitCaseData,
+    reserve_fractions: Sequence[float] = (0.05, 0.10, 0.15, 0.20, 0.25, 0.30),
+    zero_is_decrease: bool = True,
+    zero_is_increase: bool = False,
+    title: str = "Average Wrong Decision Rate vs Reserve Fraction (cases 1 & 2)",
+    figsize: tuple[float, float] = (11.5, 6.0),
+    dpi: int = 150,
+    output_path: str | Path | None = None,
+    show: bool = False,
+) -> tuple[plt.Figure, plt.Axes]:
+    """Compute wrong-decision rates for both cases and plot their average as bars.
+
+    When zero_is_decrease is True, a zero delta is treated as a decrease.
+    When zero_is_increase is True, a zero delta is treated as an increase.
+    """
+    if not reserve_fractions:
+        raise ValueError("reserve_fractions must not be empty")
+
+    fractions = np.asarray([float(value) for value in reserve_fractions], dtype=np.float64)
+    avg_wrong = np.zeros_like(fractions, dtype=np.float64)
+    avg_wrong_all = np.zeros_like(fractions, dtype=np.float64)
+
+    for idx, reserve_fraction in enumerate(fractions):
+        a1 = compute_case_wrong_decision_rate(
+            case_data_1,
+            reserve_fraction=float(reserve_fraction),
+            zero_is_decrease=zero_is_decrease,
+            zero_is_increase=zero_is_increase,
+        )
+        a2 = compute_case_wrong_decision_rate(
+            case_data_2,
+            reserve_fraction=float(reserve_fraction),
+            zero_is_decrease=zero_is_decrease,
+            zero_is_increase=zero_is_increase,
+        )
+
+        r1 = float(np.asarray(a1["wrong_decision_rate"], dtype=np.float64)[0])
+        r2 = float(np.asarray(a2["wrong_decision_rate"], dtype=np.float64)[0])
+        ra1 = float(np.asarray(a1["wrong_decision_rate_all"], dtype=np.float64)[0])
+        ra2 = float(np.asarray(a2["wrong_decision_rate_all"], dtype=np.float64)[0])
+
+        avg_wrong[idx] = 0.5 * (r1 + r2)
+        avg_wrong_all[idx] = 0.5 * (ra1 + ra2)
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    bars = ax.bar(fractions * 100.0, avg_wrong, color="#d62728", width=3.0, alpha=0.85)
+    ax.set_title(title)
+    ax.set_xlabel("Reserved last cycles (%)")
+    if zero_is_increase:
+        y_label = "Avg wrong decision rate (%)"
+    elif zero_is_decrease:
+        y_label = "Avg wrong decision rate (%)"
+    else:
+        y_label = "Avg wrong decision rate among nonzero transitions (%)"
+    ax.set_ylabel(y_label)
+    ax.set_ylim(0.0, max(100.0, float(np.max(avg_wrong)) * 1.15))
+    ax.set_xticks(fractions * 100.0)
+    ax.set_xticklabels([f"{int(round(value * 100))}%" for value in fractions])
+    ax.grid(True, axis="y", alpha=0.3)
+
+    for bar, wrong_rate in zip(bars, avg_wrong, strict=False):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            bar.get_height(),
+            f"{wrong_rate:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
 
     fig.tight_layout()
 

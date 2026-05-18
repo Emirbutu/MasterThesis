@@ -62,8 +62,8 @@ module energy_monitor #(
     parameter int PARALLELISM = 4,
     parameter int ENERGY_TOTAL_BIT = 32,
     parameter int LITTLE_ENDIAN = `True,
-    parameter int PIPESINTF = 0,
-    parameter int PIPESMID = 0,
+    parameter int PIPESINTF = 1,
+    parameter int PIPESMID = 1,
     parameter int LOCAL_ENERGY_BIT = $clog2(DATASPIN) + BITH + SCALING_BIT ,
     parameter int DATAJ = DATASPIN * BITJ * PARALLELISM,
     parameter int DATAH = BITH * PARALLELISM,
@@ -73,6 +73,7 @@ module energy_monitor #(
     input logic clk_i,
     input logic rst_ni,
     input logic en_i,
+    input logic stop_i,
     input logic standard_mode_i, // Enables energy difference calculation mode if it is 0,but I think it doesnt make 
                                  // sense to read it constantly, can be a config signal
     input logic first_operation_i, 
@@ -115,6 +116,8 @@ module energy_monitor #(
     logic unsigned [DATASCALING-1:0] hscaling_pipe;
     logic weight_valid_pipe;
     logic weight_ready_pipe;
+    logic stop_sampled;
+    logic weight_ready_masked;
     logic [DATASPIN-1:0] spin_flipped;
     logic [DATASPIN-1:0] spin_unflipped;
     logic [DATASPIN-1:0] spin_cached;
@@ -143,6 +146,7 @@ module energy_monitor #(
     logic [DATAJ-1:0] weight_selected;
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] flipped_count [PARALLELISM-1:0];
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] max_flipped_count;
+    logic max_flipped_count_zero;
     logic signed [ENERGY_TOTAL_BIT-1:0] accum_data_in;
     logic accum_valid_in;
     // Arrays for legal variable indexing
@@ -183,11 +187,13 @@ module energy_monitor #(
     `FF(energy_valid_o_d, energy_valid_o, 1'b0, clk_i, rst_ni)
     `FFL(energy_o_stored, energy_o, energy_valid_o_pulse, 1'b0, clk_i, rst_ni)
     assign spin_ready_o = spin_ready_pipe;
-    assign weight_ready_o = weight_ready_pipe;
+    `FFLARNC(stop_sampled, 1'b1, stop_i, energy_handshake && !stop_i, 1'b0, clk_i, rst_ni)
+    assign weight_ready_masked = weight_ready_pipe && !stop_sampled;
+    assign weight_ready_o = weight_ready_masked;
     assign counter_spin_o = counter_q;
     assign spin_handshake = spin_valid_pipe && spin_ready_pipe;
     assign spin_handshake_pulse = spin_handshake && !spin_handshake_d;
-    assign weight_handshake = weight_valid_pipe && weight_ready_pipe;
+    assign weight_handshake = weight_valid_pipe && weight_ready_masked;
     assign energy_handshake = energy_valid_o && energy_ready_i;
     assign weight_handshake_accum[0] = weight_handshake;
     assign energy_valid_o_pulse = energy_valid_o & ~energy_valid_o_d;
@@ -242,12 +248,15 @@ module energy_monitor #(
     endgenerate
     // Logic FSM
     logic_ctrl #(
-        .PIPESMID(PIPESMID)
+        .PIPESMID(PIPESMID),
+        .MAX_FLIPPED_COUNT_W($clog2(DATASPIN/PARALLELISM+1))
     ) u_logic_ctrl (
         .clk_i(clk_i),
         .rst_ni(rst_ni),
         .en_i(en_i),
         .max_flipped_count_valid(max_flipped_count_valid),
+        .max_flipped_count_zero_i(max_flipped_count_zero),
+        .max_flipped_count_i(max_flipped_count),
         .standard_mode_i(standard_mode_i),
         .first_operation_sampled_i(first_operation_sampled),
         .config_valid_i(config_valid_pipe),
@@ -379,7 +388,8 @@ module energy_monitor #(
         .valid_i(spin_handshake_sampled[0]), // all sampled signals are aligned
         .data_i(flipped_count),
         .valid_o(max_flipped_count_valid),
-        .max_o(max_flipped_count)
+        .max_o(max_flipped_count),
+        .zero_o(max_flipped_count_zero)
     );
     // Find all '1' positions in flipped spin vector
     generate

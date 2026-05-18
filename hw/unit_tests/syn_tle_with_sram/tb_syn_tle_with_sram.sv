@@ -212,7 +212,7 @@ module tb_syn_tle_with_sram #(
         data_in[IN_LSB_STD_MODE +: 1] = TB_STANDARD_MODE;
         spin_valid_i = 1'b0;
         spin_i = '0;
-        first_operation_i = 1'b1;
+        first_operation_i = 1'b0;
         energy_ready_i = 1'b1;
         fifo_wr = 0;
         fifo_rd = 0;
@@ -332,7 +332,7 @@ module tb_syn_tle_with_sram #(
         // Old-style pacing: send one spin, then wait until one energy is received.
         // This prevents issuing spins back-to-back without output correlation.
         for (sent_idx = 0; sent_idx < tx_count; sent_idx++) begin
-            send_spin(spin_fifo[sent_idx], (sent_idx == 0));
+            send_spin(spin_fifo[sent_idx], 1'b0);
             wait (rx_count == (sent_idx + 1));
         end
 
@@ -377,8 +377,8 @@ module tb_syn_tle_with_sram #(
          vcd_path = "tb_syn_tle_with_sram.vcd";
          void'($value$plusargs("TB_VCD_FILE=%s", vcd_path));
 
-         $dumpfile(vcd_path);
-         $dumpvars(0, dut);
+      //   $dumpfile(vcd_path);
+      //   $dumpvars(0, dut);
 
             #(1000 * CLKCYCLE);
             $fatal(1, "[TB] Timeout reached.");

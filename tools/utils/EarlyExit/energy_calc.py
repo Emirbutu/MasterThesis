@@ -845,6 +845,321 @@ def compute_case_early_stop_accuracy(
     }
 
 
+def compute_case_percentage_stop_accuracy(
+    case: EarlyExitCaseData,
+    state_bits: np.ndarray | None = None,
+    reserve_fraction: float = 0.05,
+    scaling_factor: float = 4.0,
+    include_offset: bool = False,
+    num_banks: int = 4,
+    parallelism: int = 4,
+    mode: Literal["per_transition", "propagated", "propagated_with_refresh"] = "per_transition",
+    refresh_interval: int | None = None,
+) -> dict[str, np.ndarray]:
+    """Compute early-stop accuracy when the stop point is derived from a percentage.
+
+    The stop point is calculated per transition as:
+        executed_cycles = total_cycles - ceil(total_cycles * reserve_fraction)
+
+    This means a reserve_fraction of 0.05 keeps the last 5 percent of the
+    cycles from being executed. The returned accuracy is expressed as a
+    percentage ratio:
+
+        accuracy_percent = 100 * early_exit_value / reference_value
+
+    Args:
+        case: Loaded case data.
+        state_bits: Optional state matrix (M, N). Defaults to case.states_out_bits.
+        reserve_fraction: Fraction of cycles to skip from the end of each transition.
+        scaling_factor: Scaling applied to h_vector.
+        include_offset: Whether energies include the model offset.
+        num_banks: Number of memory banks.
+        parallelism: Number of columns fetched per cycle.
+        mode: Accuracy mode, either "per_transition", "propagated", or
+            "propagated_with_refresh".
+        refresh_interval: Required when mode is "propagated_with_refresh".
+
+    Returns:
+        Dictionary with per-transition arrays keyed by:
+        - "transition_index"
+        - "total_cycles"
+        - "reserved_cycles"
+        - "executed_cycles"
+        - "reference_energy"
+        - "early_exit_energy"
+        - "accuracy_percent"
+        - "relative_error"
+    """
+    if state_bits is None:
+        state_bits = case.states_out_bits
+
+    if not 0.0 <= reserve_fraction < 1.0:
+        raise ValueError("reserve_fraction must be in [0.0, 1.0)")
+
+    states = np.asarray(state_bits)
+    if states.ndim != 2:
+        raise ValueError(f"state_bits must be 2D, got shape {states.shape}")
+    if states.shape[0] < 2:
+        raise ValueError("Need at least two states to evaluate early-stop accuracy")
+
+    if mode not in ("per_transition", "propagated", "propagated_with_refresh"):
+        raise ValueError(f"Unsupported mode: {mode}")
+    if mode == "propagated_with_refresh":
+        if refresh_interval is None:
+            raise ValueError("refresh_interval is required for propagated_with_refresh mode")
+        if refresh_interval <= 0:
+            raise ValueError("refresh_interval must be positive")
+
+    transition_traces: list[dict[str, object]] = []
+    for transition_index in range(1, states.shape[0]):
+        trace = compute_case_single_sigma_cycle_trace(
+            case=case,
+            transition_index=transition_index,
+            state_bits=states,
+            scaling_factor=scaling_factor,
+            include_offset=include_offset,
+            num_banks=num_banks,
+            parallelism=parallelism,
+        )
+        transition_traces.append(trace)
+
+    full_energies = compute_case_energy(
+        case=case,
+        state_bits=states,
+        scaling_factor=scaling_factor,
+        include_offset=include_offset,
+    )
+
+    transition_indices = np.arange(1, states.shape[0], dtype=np.int64)
+    total_cycles = np.zeros_like(transition_indices, dtype=np.int64)
+    reserved_cycles = np.zeros_like(transition_indices, dtype=np.int64)
+    executed_cycles = np.zeros_like(transition_indices, dtype=np.int64)
+    reference_energy = np.asarray(full_energies[1:], dtype=np.float64)
+    early_exit_energy = np.zeros_like(reference_energy, dtype=np.float64)
+    accuracy_percent = np.zeros_like(reference_energy, dtype=np.float64)
+    relative_error = np.zeros_like(reference_energy, dtype=np.float64)
+
+    def resolve_budget(cycle_count: int) -> tuple[int, int]:
+        skipped = int(np.ceil(cycle_count * reserve_fraction))
+        executed = max(cycle_count - skipped, 0)
+        return executed, skipped
+
+    if mode == "per_transition":
+        for out_idx, trace in enumerate(transition_traces):
+            cycle_energies = np.asarray(trace["cycle_energies"], dtype=np.float64)
+            cycle_count = int(len(cycle_energies) - 1)
+            budget, skipped = resolve_budget(cycle_count)
+
+            stopped_energy = float(cycle_energies[budget])
+            target_energy = float(reference_energy[out_idx])
+
+            total_cycles[out_idx] = cycle_count
+            reserved_cycles[out_idx] = skipped
+            executed_cycles[out_idx] = budget
+            early_exit_energy[out_idx] = stopped_energy
+            accuracy_percent[out_idx] = 0.0 if target_energy == 0.0 else 100.0 * stopped_energy / target_energy
+            relative_error[out_idx] = 0.0 if target_energy == 0.0 else abs(stopped_energy - target_energy) / abs(target_energy)
+    elif mode == "propagated":
+        approx_prev = float(full_energies[0])
+        for out_idx, trace in enumerate(transition_traces):
+            cycle_deltas = np.asarray(trace["cycle_deltas"], dtype=np.float64)
+            cycle_count = int(len(cycle_deltas) - 1)
+            budget, skipped = resolve_budget(cycle_count)
+
+            partial_delta = float(np.sum(cycle_deltas[1 : budget + 1]))
+            approx_next = approx_prev + partial_delta
+            target_energy = float(reference_energy[out_idx])
+
+            total_cycles[out_idx] = cycle_count
+            reserved_cycles[out_idx] = skipped
+            executed_cycles[out_idx] = budget
+            early_exit_energy[out_idx] = approx_next
+            accuracy_percent[out_idx] = 0.0 if target_energy == 0.0 else 100.0 * approx_next / target_energy
+            relative_error[out_idx] = 0.0 if target_energy == 0.0 else abs(approx_next - target_energy) / abs(target_energy)
+
+            approx_prev = approx_next
+    else:
+        refresh = int(refresh_interval)
+        approx_prev = float(full_energies[0])
+        for out_idx, trace in enumerate(transition_traces):
+            if out_idx > 0 and out_idx % refresh == 0:
+                approx_prev = float(full_energies[out_idx])
+
+            cycle_deltas = np.asarray(trace["cycle_deltas"], dtype=np.float64)
+            cycle_count = int(len(cycle_deltas) - 1)
+            budget, skipped = resolve_budget(cycle_count)
+
+            partial_delta = float(np.sum(cycle_deltas[1 : budget + 1]))
+            approx_next = approx_prev + partial_delta
+            target_energy = float(reference_energy[out_idx])
+
+            total_cycles[out_idx] = cycle_count
+            reserved_cycles[out_idx] = skipped
+            executed_cycles[out_idx] = budget
+            early_exit_energy[out_idx] = approx_next
+            accuracy_percent[out_idx] = 0.0 if target_energy == 0.0 else 100.0 * approx_next / target_energy
+            relative_error[out_idx] = 0.0 if target_energy == 0.0 else abs(approx_next - target_energy) / abs(target_energy)
+
+            approx_prev = approx_next
+
+    return {
+        "transition_index": transition_indices,
+        "total_cycles": total_cycles,
+        "reserved_cycles": reserved_cycles,
+        "executed_cycles": executed_cycles,
+        "reference_energy": reference_energy,
+        "early_exit_energy": early_exit_energy,
+        "accuracy_percent": accuracy_percent,
+        "relative_error": relative_error,
+        "reserve_fraction": np.asarray([reserve_fraction], dtype=np.float64),
+        "mode": np.asarray(
+            [0 if mode == "per_transition" else 1 if mode == "propagated" else 2],
+            dtype=np.int64,
+        ),
+        "refresh_interval": np.asarray([0 if refresh_interval is None else refresh_interval], dtype=np.int64),
+    }
+
+
+def compute_case_wrong_decision_rate(
+    case: EarlyExitCaseData,
+    state_bits: np.ndarray | None = None,
+    reserve_fraction: float = 0.05,
+    scaling_factor: float = 4.0,
+    include_offset: bool = False,
+    num_banks: int = 4,
+    parallelism: int = 4,
+    zero_is_decrease: bool = False,
+    zero_is_increase: bool = False,
+) -> dict[str, np.ndarray]:
+    """Compute the fraction of wrong sign decisions for propagated early exit.
+
+    A wrong decision happens when the propagated approximate transition changes
+    in the opposite direction from the true full-energy transition.
+
+    The comparison is sign-based:
+    - true_delta = full_energy[t] - full_energy[t - 1]
+    - approx_delta = approx_energy[t] - approx_energy[t - 1]
+
+    If true_delta and approx_delta have opposite signs, the transition is
+    counted as a wrong decision. If zero_is_decrease is True, any zero true
+    delta is treated as a decrease (sign -1) and zero approximate deltas are
+    counted as wrong. If zero_is_increase is True, any zero true delta is
+    treated as an increase (sign +1) and zero approximate deltas are counted
+    as wrong. Otherwise zero deltas are ignored.
+
+    Args:
+        case: Loaded case data.
+        state_bits: Optional state matrix (M, N). Defaults to case.states_out_bits.
+        reserve_fraction: Fraction of cycles to skip from the end of each transition.
+        scaling_factor: Scaling applied to h_vector.
+        include_offset: Whether energies include the model offset.
+        num_banks: Number of memory banks.
+        parallelism: Number of columns fetched per cycle.
+
+    Returns:
+        Dictionary with arrays keyed by:
+        - "transition_index"
+        - "true_delta"
+        - "approx_delta"
+        - "wrong_decision"
+        - "valid_transition"
+        - "wrong_decision_rate_all"
+        - "wrong_decision_rate"
+        - "accuracy_percent"
+        - "reserve_fraction"
+        - "zero_is_decrease"
+        - "zero_is_increase"
+    """
+    if state_bits is None:
+        state_bits = case.states_out_bits
+
+    if not 0.0 <= reserve_fraction < 1.0:
+        raise ValueError("reserve_fraction must be in [0.0, 1.0)")
+
+    states = np.asarray(state_bits)
+    if states.ndim != 2:
+        raise ValueError(f"state_bits must be 2D, got shape {states.shape}")
+    if states.shape[0] < 2:
+        raise ValueError("Need at least two states to evaluate wrong decisions")
+
+    full_energies = compute_case_energy(
+        case=case,
+        state_bits=states,
+        scaling_factor=scaling_factor,
+        include_offset=include_offset,
+    )
+
+    transition_indices = np.arange(1, states.shape[0], dtype=np.int64)
+    true_delta = np.diff(full_energies, prepend=full_energies[0])[1:]
+    approx_delta = np.zeros_like(true_delta, dtype=np.float64)
+    wrong_decision = np.zeros_like(transition_indices, dtype=np.int64)
+    valid_transition = np.zeros_like(transition_indices, dtype=np.int64)
+
+    approx_prev = float(full_energies[0])
+    for out_idx, transition_index in enumerate(transition_indices, start=0):
+        trace = compute_case_single_sigma_cycle_trace(
+            case=case,
+            transition_index=int(transition_index),
+            state_bits=states,
+            scaling_factor=scaling_factor,
+            include_offset=include_offset,
+            num_banks=num_banks,
+            parallelism=parallelism,
+        )
+
+        cycle_deltas = np.asarray(trace["cycle_deltas"], dtype=np.float64)
+        cycle_count = int(len(cycle_deltas) - 1)
+        skipped_cycles = int(np.ceil(cycle_count * reserve_fraction))
+        executed_cycles = max(cycle_count - skipped_cycles, 0)
+        partial_delta = float(np.sum(cycle_deltas[1 : executed_cycles + 1]))
+        approx_next = approx_prev + partial_delta
+        delta = approx_next - approx_prev
+
+        approx_delta[out_idx] = delta
+
+        if zero_is_increase:
+            true_sign = 1 if true_delta[out_idx] >= 0.0 else -1
+            approx_sign = 1 if delta > 0.0 else (-1 if delta < 0.0 else 0)
+            valid_transition[out_idx] = 1
+            if true_sign != approx_sign:
+                wrong_decision[out_idx] = 1
+        elif zero_is_decrease:
+            true_sign = -1 if true_delta[out_idx] <= 0.0 else 1
+            approx_sign = 1 if delta > 0.0 else (-1 if delta < 0.0 else 0)
+            valid_transition[out_idx] = 1
+            if true_sign != approx_sign:
+                wrong_decision[out_idx] = 1
+        else:
+            true_sign = 0 if true_delta[out_idx] == 0.0 else int(np.sign(true_delta[out_idx]))
+            approx_sign = 0 if delta == 0.0 else int(np.sign(delta))
+            if true_sign != 0:
+                valid_transition[out_idx] = 1
+            if true_sign != 0 and approx_sign != 0 and true_sign != approx_sign:
+                wrong_decision[out_idx] = 1
+
+        approx_prev = approx_next
+
+    valid_count = int(np.sum(valid_transition))
+    wrong_count = int(np.sum(wrong_decision))
+    wrong_decision_rate_all = np.asarray([100.0 * float(np.mean(wrong_decision))], dtype=np.float64)
+    wrong_decision_rate = np.asarray([0.0 if valid_count == 0 else 100.0 * wrong_count / valid_count], dtype=np.float64)
+    accuracy_percent = np.asarray([100.0 - wrong_decision_rate[0]], dtype=np.float64)
+
+    return {
+        "transition_index": transition_indices,
+        "true_delta": true_delta,
+        "approx_delta": approx_delta,
+        "wrong_decision": wrong_decision,
+        "valid_transition": valid_transition,
+        "wrong_decision_rate_all": wrong_decision_rate_all,
+        "wrong_decision_rate": wrong_decision_rate,
+        "accuracy_percent": accuracy_percent,
+        "reserve_fraction": np.asarray([reserve_fraction], dtype=np.float64),
+        "zero_is_decrease": np.asarray([1 if zero_is_decrease else 0], dtype=np.int64),
+        "zero_is_increase": np.asarray([1 if zero_is_increase else 0], dtype=np.int64),
+    }
+
+
 def compute_case_transition_cycle_counts(
     case: EarlyExitCaseData,
     state_bits: np.ndarray | None = None,
@@ -881,7 +1196,6 @@ def compute_case_transition_cycle_counts(
     transition_indices = np.arange(1, states.shape[0], dtype=np.int64)
     changed_bits = np.zeros_like(transition_indices, dtype=np.int64)
     cycle_count = np.zeros_like(transition_indices, dtype=np.int64)
-    cycle_count = np.zeros_like(transition_indices, dtype=np.int64)
 
     for out_idx, transition_index in enumerate(transition_indices):
         prev_bits = states[transition_index - 1]
@@ -899,6 +1213,168 @@ def compute_case_transition_cycle_counts(
         "transition_index": transition_indices,
         "changed_bits": changed_bits,
         "cycle_count": cycle_count,
+    }
+
+
+def compute_case_full_schedule_cycle_trace(
+    case: EarlyExitCaseData,
+    state_bits: np.ndarray | None = None,
+    transition_index: int | None = None,
+    scaling_factor: float = 4.0,
+    include_offset: bool = False,
+    num_banks: int = 4,
+    parallelism: int = 4,
+) -> dict[str, object]:
+    """Trace the full fixed schedule that evaluates every column once.
+
+    This is the path that corresponds to a full energy calculation. The work
+    is split across the complete banked schedule, independent of whether any
+    spin changed in the transition.
+    """
+    if state_bits is None:
+        state_bits = case.states_out_bits
+
+    states = np.asarray(state_bits)
+    if states.ndim != 2:
+        raise ValueError(f"state_bits must be 2D, got shape {states.shape}")
+
+    if transition_index is None:
+        raise ValueError("transition_index is required to select the current state")
+    if transition_index < 1 or transition_index >= states.shape[0]:
+        raise ValueError(
+            f"transition_index must be in [1, {states.shape[0] - 1}], got {transition_index}"
+        )
+
+    current_bits = states[transition_index]
+    current_spins = bits_to_spins(current_bits).astype(np.float64)
+    j = np.asarray(case.j_matrix_nibble, dtype=np.float64)
+    h_scaled = np.asarray(case.h_vector_nibble, dtype=np.float64) * scaling_factor
+
+    all_columns = np.arange(current_spins.shape[0], dtype=np.int64)
+    schedule = schedule_changed_columns_by_cycle(all_columns, num_banks=num_banks)
+
+    energy = float(case.offset if include_offset else 0.0)
+    cycle_energies: list[float] = [energy]
+    cycle_deltas: list[float] = [0.0]
+
+    for cycle in schedule:
+        batch_delta = 0.0
+        for idx in cycle["columns"]:
+            idx_i = int(idx)
+            spin_value = float(current_spins[idx_i])
+            j_column = j[:, idx_i]
+
+            pair_contribution = -0.5 * spin_value * float(j_column @ current_spins)
+            bias_contribution = -float(h_scaled[idx_i] * spin_value)
+            batch_delta += pair_contribution + bias_contribution
+
+        energy += batch_delta
+        cycle_deltas.append(float(batch_delta))
+        cycle_energies.append(float(energy))
+
+    return {
+        "cycle_energies": np.asarray(cycle_energies, dtype=np.float64),
+        "cycle_deltas": np.asarray(cycle_deltas, dtype=np.float64),
+        "transition_index": transition_index,
+        "bank_batches": schedule,
+    }
+
+
+def compute_case_stop_at_incremental_cycles(
+    case: EarlyExitCaseData,
+    state_bits: np.ndarray | None = None,
+    scaling_factor: float = 4.0,
+    include_offset: bool = False,
+    num_banks: int = 4,
+    parallelism: int = 4,
+) -> dict[str, np.ndarray]:
+    """Simulate a full per-cycle fetch schedule but stop each transition
+    at the number of cycles determined by the incremental (changed-columns)
+    schedule for that transition.
+
+    This answers: for a transition that would only need X cycles in the
+    incremental method, what energy would we observe if we ran the full
+    fetch schedule but stopped after X cycles?
+
+    Returns arrays keyed by:
+    - "transition_index"
+    - "incremental_cycle_count"
+    - "executed_cycles_on_full_schedule"
+    - "early_energy_on_full_schedule"
+    - "reference_energy"
+    - "abs_error"
+    - "rel_error"
+    - "accuracy_percent"
+    """
+    if state_bits is None:
+        state_bits = case.states_out_bits
+
+    states = np.asarray(state_bits)
+    if states.ndim != 2:
+        raise ValueError(f"state_bits must be 2D, got shape {states.shape}")
+    if states.shape[0] < 2:
+        raise ValueError("Need at least two states to evaluate this scenario")
+
+    n_spins = states.shape[1]
+
+    # Determine incremental cycle counts per transition
+    cycle_counts_info = compute_case_transition_cycle_counts(
+        case=case, state_bits=states, num_banks=num_banks, parallelism=parallelism
+    )
+    incremental_cycle_count = np.asarray(cycle_counts_info["cycle_count"], dtype=np.int64)
+
+    # Full (true) energies for reference
+    full_energies = compute_case_energy(case=case, state_bits=states, scaling_factor=scaling_factor, include_offset=include_offset)
+    reference_energy = np.asarray(full_energies[1:], dtype=np.float64)
+
+    transition_indices = np.arange(1, states.shape[0], dtype=np.int64)
+    executed_cycles_on_full = np.zeros_like(transition_indices, dtype=np.int64)
+    early_energy_on_full = np.zeros_like(reference_energy, dtype=np.float64)
+    abs_err = np.zeros_like(reference_energy, dtype=np.float64)
+    rel_err = np.zeros_like(reference_energy, dtype=np.float64)
+    acc_percent = np.zeros_like(reference_energy, dtype=np.float64)
+
+    j = case.j_matrix_nibble
+    h = case.h_vector_nibble
+
+    for out_idx, t_idx in enumerate(transition_indices):
+        full_trace = compute_case_full_schedule_cycle_trace(
+            case=case,
+            state_bits=states,
+            transition_index=int(t_idx),
+            scaling_factor=scaling_factor,
+            include_offset=include_offset,
+            num_banks=num_banks,
+            parallelism=parallelism,
+        )
+        cycle_energies = np.asarray(full_trace["cycle_energies"], dtype=np.float64)
+
+        # Determine how many cycles the incremental method would use
+        inc_cycles = int(incremental_cycle_count[out_idx])
+
+        # Bound executed cycles to the available full schedule depth
+        max_full_cycles = len(cycle_energies) - 1
+        executed = min(inc_cycles, max_full_cycles)
+
+        early_e = float(cycle_energies[executed])
+        target = float(reference_energy[out_idx])
+
+        executed_cycles_on_full[out_idx] = executed
+        early_energy_on_full[out_idx] = early_e
+        abs_err[out_idx] = abs(early_e - target)
+        denom = abs(target)
+        rel_err[out_idx] = 0.0 if denom == 0.0 else abs_err[out_idx] / denom
+        acc_percent[out_idx] = 0.0 if denom == 0.0 else 100.0 * early_e / target
+
+    return {
+        "transition_index": transition_indices,
+        "incremental_cycle_count": incremental_cycle_count,
+        "executed_cycles_on_full_schedule": executed_cycles_on_full,
+        "early_energy_on_full_schedule": early_energy_on_full,
+        "reference_energy": reference_energy,
+        "abs_error": abs_err,
+        "rel_error": rel_err,
+        "accuracy_percent": acc_percent,
     }
 
 
