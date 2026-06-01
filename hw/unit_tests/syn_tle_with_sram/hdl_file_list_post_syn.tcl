@@ -11,7 +11,7 @@ set HDL_FILES [ list \
     "${HDL_PATH}/tc_sram_syn.sv" \
     "/users/micas/micas/design/tsmc28hpcplus/memories/compilers/MC2/tsn28hpcpuhdspsram_20120200_170a/ts1n28hpcpuhdhvtb64x256m1swbso_170a/VERILOG/ts1n28hpcpuhdhvtb64x256m1swbso_170a_tt0p9v25c.v" \
     "${HDL_PATH}/energy_monitor/energy_monitor.sv" \
-    "/users/students/r1024900/MasterThesis/target/syn/src/outputs/syn_tle_with_sram/_C2000_RT1/syn_tle_with_sram_cde.injected_try.v" \
+    "/users/students/r1024900/MasterThesis/target/syn/src/outputs/syn_tle_with_sram_nobh/_C2501_RT1/syn_tle_with_sram_nobh_cdeinjected.v" \
     "${TSMC28_PDK_HOME}/tcbn28hpcplusbwp30p140_190a_FE/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp30p140_110a/tcbn28hpcplusbwp30p140.v" \
     "${TSMC28_PDK_HOME}/tcbn28hpcplusbwp30p140lvt_190a_FE/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp30p140lvt_110a/tcbn28hpcplusbwp30p140lvt.v" \
     "${TSMC28_PDK_HOME}/tcbn28hpcplusbwp30p140hvt_190a_FE/TSMCHOME/digital/Front_End/verilog/tcbn28hpcplusbwp30p140hvt_110a/tcbn28hpcplusbwp30p140hvt.v" \

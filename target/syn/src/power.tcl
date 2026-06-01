@@ -27,7 +27,7 @@ source ${INPUTS_DIR}/../src/config.tcl
 # config.tcl may have set SYN_MODULE to DUS; we force the correct top-level name.
 set SYN_MODULE "syn_tle_with_sram"
 set TECH_NODE "tsmc28"
-set CLK_SPD 2500
+set CLK_SPD 2000
 set RETIME 1
 set OUTPUTS_DIR ${SYN_DIR}/src/outputs/${SYN_MODULE}/_C${CLK_SPD}_RT${RETIME}
 
@@ -41,13 +41,52 @@ if {![info exists target_library] || [llength $target_library] == 0} {
 set_attribute library $target_library /
 puts "Loaded [llength $target_library] technology libraries."
 
-set DESIGN ${SYN_MODULE}
+# Determine the design name. Priority:
+# 1) explicit ::env(SYN_MODULE)
+# 2) if NETLIST_FILE provided, detect first `module` declaration in that file
+# 3) fallback to SYN_MODULE from config
+if {[info exists ::env(SYN_MODULE)]} {
+    set DESIGN $::env(SYN_MODULE)
+} elseif {[info exists ::env(NETLIST_FILE)]} {
+    # try to find the first Verilog module name in the netlist
+    set netpath $::env(NETLIST_FILE)
+    set design_name ""
+    if {[file exists $netpath]} {
+        set fh [open $netpath r]
+        set last_mod ""
+        while {[gets $fh line] >= 0} {
+            if {[regexp {^\s*module\s+([a-zA-Z_][a-zA-Z0-9_]*)} $line -> mname]} {
+                set last_mod $mname
+                # if filename-like module matches, prefer it
+                if {$mname == [file rootname $netpath]} {
+                    set design_name $mname
+                    break
+                }
+            }
+        }
+        close $fh
+        if {$design_name eq "" && $last_mod ne ""} {
+            set design_name $last_mod
+        }
+    }
+    if {$design_name ne ""} {
+        set DESIGN $design_name
+    } else {
+        # fall back to configured name if no module found
+        set DESIGN ${SYN_MODULE}
+    }
+} else {
+    set DESIGN ${SYN_MODULE}
+}
 puts "Design: ${DESIGN}"
 
-# Use the original synthesized netlist (non-injected).
-# Note: For power analysis, we don't need cdeFileInit parameters (those are for simulation).
-# The original netlist allows Genus to properly elaborate SRAM library cells.
-set NETLIST_FILE ${OUTPUTS_DIR}/${DESIGN}.v
+# Use an explicitly provided netlist when available, otherwise fall back to the
+# default synthesized netlist for this design.
+if {![info exists ::env(NETLIST_FILE)]} {
+    set NETLIST_FILE ${OUTPUTS_DIR}/${DESIGN}.v
+} else {
+    set NETLIST_FILE $::env(NETLIST_FILE)
+}
 
 if {![info exists ::env(VCD_FILE)]} {
     puts "Error: VCD_FILE is not defined. Export it before running the power script."

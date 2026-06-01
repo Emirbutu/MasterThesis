@@ -37,6 +37,9 @@ from .energy_calc import (
     relative_energy_error,
     schedule_changed_columns_by_bank,
     schedule_changed_columns_by_cycle,
+    schedule_changed_columns_by_packed_address,
+    compute_case_full_schedule_cycle_trace,
+    compute_case_stop_at_incremental_cycles,
     update_hamiltonian_energy,
 )
 
@@ -63,6 +66,7 @@ __all__ = [
     "column_bank_address",
     "schedule_changed_columns_by_bank",
     "schedule_changed_columns_by_cycle",
+    "schedule_changed_columns_by_packed_address",
     "hamiltonian_energy",
     "hamiltonian_energy_delta",
     "update_hamiltonian_energy",
@@ -74,6 +78,8 @@ __all__ = [
     "compute_case_energy",
     "compute_case_energy_incremental",
     "compute_case_energy_trace",
+    "compute_case_full_schedule_cycle_trace",
+    "compute_case_stop_at_incremental_cycles",
     "energy_error",
     "relative_energy_error",
 ]

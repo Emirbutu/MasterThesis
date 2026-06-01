@@ -2,9 +2,11 @@
 
 ## Executive Summary
 
-By replicating columns across multiple memory banks, we can significantly improve bandwidth utilization and reduce cycle counts. This analysis compares four replication strategies across a spectrum of memory-bandwidth tradeoffs.
+By replicating columns across multiple memory banks, we can improve bank-slot utilization and reduce cycle counts. This analysis compares four replication strategies across a spectrum of memory-bandwidth tradeoffs.
 
-**Key Finding**: Replicating data to just 2 banks (2x full replication) provides **15-16% cycle reduction** while doubling memory size, offering a good balance for energy-constrained systems.
+Important: the bandwidth-utilization metric and the cycle-reduction metric are related, but they are not the same quantity. In the current model, utilization is computed from total bank slots used divided by total available bank slots, while cycle reduction is computed relative to the 1x baseline cycle count.
+
+**Key Finding**: On the current exact scheduler, 2x replication reduces total cycles by about **12.6-14.4%** across the two default cases, with the strongest single-case result coming from 4x_full at **14.4%** in Case 1.
 
 ---
 
@@ -20,23 +22,23 @@ By replicating columns across multiple memory banks, we can significantly improv
 ### 2. **2x Partial Replication** ⭐ Recommended
 - **Architecture**: Replicate ~50% of high-load columns to secondary banks
 - **Memory**: 1.5× baseline (12 KB total)
-- **Benefit**: **10% cycle reduction**
-- **Cost-Benefit**: 20% cycles saved per 1× memory added
+- **Benefit**: **12-13% cycle reduction** on the current data
+- **Cost-Benefit**: about 25% cycles saved per 1× memory added
 - **Use Case**: Best for systems with moderate memory headroom (~4 KB/bank)
 
 ### 3. **2x Full Replication**
 - **Architecture**: Each column stored in 2 banks (e.g., Bank $i$ and Bank $(i+1) \mod 4$)
 - **Memory**: 2× baseline (16 KB total)
-- **Benefit**: **15-16% cycle reduction**
-- **Cost-Benefit**: 16% cycles saved per 1× memory added
-- **Use Case**: Systems targeting ~30% performance uplift
+- **Benefit**: **12.6-14.3% cycle reduction** on the current data
+- **Cost-Benefit**: about 14% cycles saved per 1× memory added
+- **Use Case**: Systems targeting the lowest cycle count without going to full replication
 
 ### 4. **4x Full Replication**
 - **Architecture**: All columns replicated to all 4 banks
 - **Memory**: 4× baseline (32 KB total)
-- **Benefit**: **31% cycle reduction** (theoretical maximum parallelism)
-- **Cost-Benefit**: 10% cycles saved per 1× memory added (diminishing returns)
-- **Use Case**: High-performance systems with ample memory; less efficient than 2x strategies
+- **Benefit**: **14.4% cycle reduction** in Case 1 and **12.9%** in Case 2 on the current scheduler
+- **Cost-Benefit**: diminishing returns because the workload is already close to bank-balanced under 2x_full
+- **Use Case**: Only worthwhile if you need the strongest per-case upper bound on cycle count
 
 ---
 
@@ -46,19 +48,31 @@ By replicating columns across multiple memory banks, we can significantly improv
 
 | Strategy | Mean Cycles | Total Cycles | Max Cycles | Memory | Cycle Savings |
 |----------|------------|-------------|-----------|--------|--------------|
-| **1x** | 8.87 | 4,542 | 84 | 1.0x | — |
-| **2x_partial** | 7.98 | 4,087 | 68 | 1.5x | **10.0%** ↓ |
-| **2x_full** | 7.48 | 3,829 | 62 | 2.0x | **15.7%** ↓ |
-| **4x_full** | 6.10 | 3,121 | 56 | 4.0x | **31.3%** ↓ |
+| **1x** | 6.60 | 3,379 | 58 | 1.0x | — |
+| **2x_partial** | 5.67 | 2,903 | 56 | 1.5x | **14.1%** ↓ |
+| **2x_full** | 5.66 | 2,896 | 56 | 2.0x | **14.3%** ↓ |
+| **4x_full** | 5.65 | 2,892 | 56 | 4.0x | **14.4%** ↓ |
 
 ### Case 2 Analysis
 
 | Strategy | Mean Cycles | Total Cycles | Max Cycles | Memory | Cycle Savings |
 |----------|------------|-------------|-----------|--------|--------------|
-| **1x** | 9.30 | 4,762 | 81 | 1.0x | — |
-| **2x_partial** | 8.34 | 4,272 | 65 | 1.5x | **10.3%** ↓ |
-| **2x_full** | 7.80 | 3,996 | 60 | 2.0x | **16.1%** ↓ |
-| **4x_full** | 6.41 | 3,280 | 54 | 4.0x | **31.1%** ↓ |
+| **1x** | 6.84 | 3,503 | 56 | 1.0x | — |
+| **2x_partial** | 5.98 | 3,061 | 54 | 1.5x | **12.6%** ↓ |
+| **2x_full** | 5.96 | 3,050 | 54 | 2.0x | **12.9%** ↓ |
+| **4x_full** | 5.96 | 3,050 | 54 | 4.0x | **12.9%** ↓ |
+
+### Metric Relationship
+
+For these reports, the aggregate bandwidth utilization is computed as:
+
+```text
+utilization(%) = 100 * total_changed_columns / (4 * total_cycles)
+```
+
+That means the utilization number moves in the same direction as cycle reduction, but it is not the same percentage. If the cycle count drops by 14%, utilization rises by more than 14% because the denominator got smaller.
+
+To make that concrete, the current Case 1 totals are 11,102 changed columns over 3,379 cycles for 1x, and 11,102 changed columns over 2,896 cycles for 2x_full. The second number has fewer cycles, so the utilization is higher even though both are reporting the same underlying workload.
 
 ---
 
@@ -120,15 +134,15 @@ With replication, each column can be fetched from multiple banks:
 ### Efficiency Ratio: Cycles Saved per Memory Added
 
 ```
-2x_partial:  20.0% cycles saved per 1x memory (BEST VALUE)
-2x_full:     16.0% cycles saved per 1x memory (Good)
-4x_full:     10.4% cycles saved per 1x memory (Diminishing returns)
+2x_partial:  25.2% cycles saved per 1x memory (BEST VALUE)
+2x_full:     14.3% cycles saved per 1x memory (Good)
+4x_full:      4.8% cycles saved per 1x memory (Diminishing returns)
 ```
 
 **Interpretation**:
-- **2x_partial** gives the best return on memory investment
-- **4x_full** shows diminishing returns (4× memory for only ~31% speedup)
-- **2x_full** is the sweet spot for 15% speedup with reasonable memory overhead
+- **2x_partial** gives the best return on memory investment on the current traces
+- **4x_full** shows diminishing returns because the schedule is already close to balanced under 2x_full
+- **2x_full** is the best balance if the goal is simply the lowest cycle count among the compact replication options
 
 ---
 
@@ -166,18 +180,23 @@ With replication, each column can be fetched from multiple banks:
 
 ### Scheduling Algorithm
 
-With replication, the scheduler uses load-balancing to minimize max cycles:
+The current implementation does not use a hand-tuned cycle formula. It computes the exact minimum-max-load assignment for the changed columns, then packs one request per bank per cycle. That is why the code produces a real schedule trace instead of a closed-form estimate.
 
-```python
-# Theoretical minimum cycles with full replication:
-cycles_min = ceil(n_changed_columns / num_banks)
+For example, on Case 1 transition 184 with changed columns [14, 147, 210, 236]:
 
-# With partial replication:
-cycles ≈ ceil(n_changed_columns / num_banks) × adjustment_factor
-  where adjustment_factor = 1.2 for 2x_partial
-                           = 1.1 for 2x_full
-                           = 1.0 for 4x_full (ideal)
+```text
+1x:
+  cycle 0: b0:c236@a59 | b2:c14@a3 | b3:c147@a36
+  cycle 1: b2:c210@a52
+
+2x_full:
+  cycle 0: b0:c147@a36 | b1:c236@a59 | b2:c14@a3 | b3:c210@a52
+
+4x_full:
+  cycle 0: b0:c14@a3 | b1:c147@a36 | b2:c210@a52 | b3:c236@a59
 ```
+
+This is the clearest way to check whether a claimed speedup is real: the cycle count must come from an actual bank-by-bank schedule, not from a utilization heuristic.
 
 ### Memory Layout Changes
 
@@ -244,11 +263,11 @@ With 15% cycle reduction (2x_full):
 
 **For the MasterThesis project:**
 
-Implement **2x_full replication** because:
-1. **Performance**: 15-16% consistent improvement across both cases
-2. **Memory**: 2× is manageable (16 KB per bank vs 32 KB for 4x)
-3. **Cost-benefit**: Best balance (16% cycles / 1× memory added)
-4. **Precedent**: Used in commercial systems (NVIDIA, TPUs use similar strategies)
+Implement **2x_partial** if memory efficiency is the priority, or **2x_full** if the priority is the lowest cycle count with a simple replication scheme.
+
+1. **2x_partial** gives the best cycle reduction per added memory on the current data.
+2. **2x_full** gives a slightly lower cycle count, but the gain over 2x_partial is small.
+3. **4x_full** has the highest memory cost and little additional benefit on these traces.
 
 ### Implementation Roadmap
 

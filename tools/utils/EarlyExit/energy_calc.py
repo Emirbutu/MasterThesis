@@ -207,6 +207,65 @@ def schedule_changed_columns_by_cycle(
     return cycles
 
 
+def schedule_changed_columns_by_packed_address(
+    changed_columns: np.ndarray,
+    columns_per_address: int = 4,
+    total_columns: int | None = None,
+) -> list[dict[str, np.ndarray | int]]:
+    """Group changed columns into fetch cycles for a packed SRAM.
+
+    A single request fetches one address line containing `columns_per_address`
+    columns. If any column in that line is needed, the full line is fetched.
+    """
+    cols = np.asarray(changed_columns, dtype=np.int64)
+    if cols.ndim != 1:
+        raise ValueError(f"changed_columns must be 1D, got shape {cols.shape}")
+    if columns_per_address <= 0:
+        raise ValueError("columns_per_address must be positive")
+
+    if cols.size == 0:
+        return []
+
+    if total_columns is None:
+        total_columns = int(cols.max()) + 1
+
+    packed_addresses = cols // columns_per_address
+    unique_addresses = np.unique(packed_addresses)
+
+    cycles: list[dict[str, np.ndarray | int]] = []
+    for cycle_idx, address in enumerate(unique_addresses):
+        start = int(address) * columns_per_address
+        stop = min(start + columns_per_address, total_columns)
+        cycles.append(
+            {
+                "cycle": cycle_idx,
+                "columns": np.arange(start, stop, dtype=np.int64),
+                "requested_columns": cols[packed_addresses == address],
+                "addresses": np.asarray([int(address)], dtype=np.int64),
+            }
+        )
+
+    return cycles
+
+
+def _schedule_changed_columns(
+    changed_columns: np.ndarray,
+    memory_mode: Literal["banked", "packed_4cols"] = "banked",
+    num_banks: int = 4,
+    columns_per_address: int = 4,
+    total_columns: int | None = None,
+) -> list[dict[str, np.ndarray | int]]:
+    if memory_mode == "banked":
+        return schedule_changed_columns_by_cycle(changed_columns, num_banks=num_banks)
+    if memory_mode == "packed_4cols":
+        return schedule_changed_columns_by_packed_address(
+            changed_columns,
+            columns_per_address=columns_per_address,
+            total_columns=total_columns,
+        )
+    raise ValueError(f"Unsupported memory_mode: {memory_mode}")
+
+
 def hamiltonian_energy(
     spins: np.ndarray,
     j_matrix: np.ndarray,
@@ -462,7 +521,9 @@ def compute_case_energy_trace(
     state_bits: np.ndarray | None = None,
     scaling_factor: float = 4.0,
     include_offset: bool = True,
+    memory_mode: Literal["banked", "packed_4cols"] = "banked",
     num_banks: int = 4,
+    columns_per_address: int = 4,
     parallelism: int = 4,
 ) -> dict[str, object]:
     """Return a detailed per-cycle trace of the incremental energy calculation.
@@ -477,7 +538,11 @@ def compute_case_energy_trace(
         state_bits: Binary state array with shape (M, N) or None to use states_out.
         scaling_factor: Scaling applied to h_vector.
         include_offset: If False, omit the model offset and return raw energy.
+        memory_mode: "banked" keeps the current 4-bank behavior.
+            "packed_4cols" models one SRAM line per address with 4 columns
+            per request, fetching the whole line if any column is needed.
         num_banks: Number of memory banks in the hardware mapping.
+        columns_per_address: Number of columns per packed SRAM address line.
         parallelism: Number of columns fetched per batch.
 
     Returns:
@@ -512,9 +577,12 @@ def compute_case_energy_trace(
 
     for idx in range(1, num_steps):
         changed_columns = changed_spin_indices(state_bits[idx - 1], state_bits[idx])
-        cycle_batches = schedule_changed_columns_by_cycle(
+        cycle_batches = _schedule_changed_columns(
             changed_columns,
+            memory_mode=memory_mode,
             num_banks=num_banks,
+            columns_per_address=columns_per_address,
+            total_columns=spins.shape[1],
         )
 
         delta = hamiltonian_energy_delta(
@@ -546,7 +614,9 @@ def compute_sigma_delta_cycle_trace(
     j_matrix: np.ndarray,
     h_vector: np.ndarray,
     scaling_factor: float = 4.0,
+    memory_mode: Literal["banked", "packed_4cols"] = "banked",
     num_banks: int = 4,
+    columns_per_address: int = 4,
     parallelism: int = 4,
 ) -> dict[str, object]:
     """Trace per-fetch-cycle delta energy for one sigma transition.
@@ -561,7 +631,11 @@ def compute_sigma_delta_cycle_trace(
         j_matrix: Coupling matrix, shape (N, N).
         h_vector: Bias vector, shape (N,).
         scaling_factor: Scaling applied to h_vector.
+        memory_mode: "banked" keeps the current 4-bank behavior.
+            "packed_4cols" models one SRAM line per address with 4 columns
+            per request, fetching the whole line if any column is needed.
         num_banks: Number of memory banks.
+        columns_per_address: Number of columns per packed SRAM address line.
         parallelism: Number of columns fetched per cycle.
 
     Returns:
@@ -584,9 +658,12 @@ def compute_sigma_delta_cycle_trace(
     h_scaled = np.asarray(h_vector, dtype=np.float64) * scaling_factor
 
     changed_columns = changed_spin_indices(prev_bits, curr_bits)
-    cycle_batches = schedule_changed_columns_by_cycle(
+    cycle_batches = _schedule_changed_columns(
         changed_columns,
+        memory_mode=memory_mode,
         num_banks=num_banks,
+        columns_per_address=columns_per_address,
+        total_columns=prev_bits.shape[0],
     )
 
     working = prev.copy()
@@ -628,7 +705,9 @@ def compute_case_single_sigma_cycle_trace(
     state_bits: np.ndarray | None = None,
     scaling_factor: float = 4.0,
     include_offset: bool = False,
+    memory_mode: Literal["banked", "packed_4cols"] = "banked",
     num_banks: int = 4,
+    columns_per_address: int = 4,
     parallelism: int = 4,
 ) -> dict[str, object]:
     """Build a per-fetch-cycle trace for one sigma transition in a case.
@@ -639,7 +718,11 @@ def compute_case_single_sigma_cycle_trace(
         state_bits: Optional state matrix (M, N). Defaults to case.states_out_bits.
         scaling_factor: Scaling applied to h_vector.
         include_offset: Whether previous sigma energy includes the model offset.
+        memory_mode: "banked" keeps the current 4-bank behavior.
+            "packed_4cols" models one SRAM line per address with 4 columns
+            per request, fetching the whole line if any column is needed.
         num_banks: Number of memory banks.
+        columns_per_address: Number of columns per packed SRAM address line.
         parallelism: Number of columns fetched per cycle.
 
     Returns:
@@ -677,7 +760,9 @@ def compute_case_single_sigma_cycle_trace(
         j_matrix=case.j_matrix_nibble,
         h_vector=case.h_vector_nibble,
         scaling_factor=scaling_factor,
+        memory_mode=memory_mode,
         num_banks=num_banks,
+        columns_per_address=columns_per_address,
         parallelism=parallelism,
     )
     trace["transition_index"] = transition_index
@@ -1163,18 +1248,25 @@ def compute_case_wrong_decision_rate(
 def compute_case_transition_cycle_counts(
     case: EarlyExitCaseData,
     state_bits: np.ndarray | None = None,
+    memory_mode: Literal["banked", "packed_4cols"] = "banked",
     num_banks: int = 4,
+    columns_per_address: int = 4,
     parallelism: int = 4,
 ) -> dict[str, np.ndarray]:
     """Count how many internal fetch cycles each transition needs.
 
-    The count is based on the banked schedule of changed columns. If only four
-    bits change and parallelism is four, the transition needs one cycle.
+    The count is based on the selected memory schedule. In the default banked
+    mode, changed columns are grouped by bank. In packed_4cols mode, any change
+    within a 4-column SRAM line fetches the full line in one cycle.
 
     Args:
         case: Loaded case data.
         state_bits: Optional state matrix (M, N). Defaults to case.states_out_bits.
+        memory_mode: "banked" keeps the current 4-bank behavior.
+            "packed_4cols" models one SRAM line per address with 4 columns
+            per request, fetching the whole line if any column is needed.
         num_banks: Number of memory banks.
+        columns_per_address: Number of columns per packed SRAM address line.
         parallelism: Number of columns fetched per cycle.
 
     Returns:
@@ -1201,9 +1293,12 @@ def compute_case_transition_cycle_counts(
         prev_bits = states[transition_index - 1]
         curr_bits = states[transition_index]
         changed = changed_spin_indices(prev_bits, curr_bits)
-        cycles = schedule_changed_columns_by_cycle(
+        cycles = _schedule_changed_columns(
             changed,
+            memory_mode=memory_mode,
             num_banks=num_banks,
+            columns_per_address=columns_per_address,
+            total_columns=states.shape[1],
         )
 
         changed_bits[out_idx] = int(changed.size)
@@ -1222,14 +1317,16 @@ def compute_case_full_schedule_cycle_trace(
     transition_index: int | None = None,
     scaling_factor: float = 4.0,
     include_offset: bool = False,
+    memory_mode: Literal["banked", "packed_4cols"] = "banked",
     num_banks: int = 4,
+    columns_per_address: int = 4,
     parallelism: int = 4,
 ) -> dict[str, object]:
     """Trace the full fixed schedule that evaluates every column once.
 
     This is the path that corresponds to a full energy calculation. The work
-    is split across the complete banked schedule, independent of whether any
-    spin changed in the transition.
+    is split across the complete schedule for the selected memory mode,
+    independent of whether any spin changed in the transition.
     """
     if state_bits is None:
         state_bits = case.states_out_bits
@@ -1251,7 +1348,13 @@ def compute_case_full_schedule_cycle_trace(
     h_scaled = np.asarray(case.h_vector_nibble, dtype=np.float64) * scaling_factor
 
     all_columns = np.arange(current_spins.shape[0], dtype=np.int64)
-    schedule = schedule_changed_columns_by_cycle(all_columns, num_banks=num_banks)
+    schedule = _schedule_changed_columns(
+        all_columns,
+        memory_mode=memory_mode,
+        num_banks=num_banks,
+        columns_per_address=columns_per_address,
+        total_columns=current_spins.shape[0],
+    )
 
     energy = float(case.offset if include_offset else 0.0)
     cycle_energies: list[float] = [energy]
@@ -1285,7 +1388,9 @@ def compute_case_stop_at_incremental_cycles(
     state_bits: np.ndarray | None = None,
     scaling_factor: float = 4.0,
     include_offset: bool = False,
+    memory_mode: Literal["banked", "packed_4cols"] = "banked",
     num_banks: int = 4,
+    columns_per_address: int = 4,
     parallelism: int = 4,
 ) -> dict[str, np.ndarray]:
     """Simulate a full per-cycle fetch schedule but stop each transition
@@ -1319,7 +1424,12 @@ def compute_case_stop_at_incremental_cycles(
 
     # Determine incremental cycle counts per transition
     cycle_counts_info = compute_case_transition_cycle_counts(
-        case=case, state_bits=states, num_banks=num_banks, parallelism=parallelism
+        case=case,
+        state_bits=states,
+        memory_mode=memory_mode,
+        num_banks=num_banks,
+        columns_per_address=columns_per_address,
+        parallelism=parallelism,
     )
     incremental_cycle_count = np.asarray(cycle_counts_info["cycle_count"], dtype=np.int64)
 
@@ -1344,7 +1454,9 @@ def compute_case_stop_at_incremental_cycles(
             transition_index=int(t_idx),
             scaling_factor=scaling_factor,
             include_offset=include_offset,
+            memory_mode=memory_mode,
             num_banks=num_banks,
+            columns_per_address=columns_per_address,
             parallelism=parallelism,
         )
         cycle_energies = np.asarray(full_trace["cycle_energies"], dtype=np.float64)

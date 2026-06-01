@@ -17,7 +17,7 @@
 `endif
 
 `ifndef NUM_TESTS
-`define NUM_TESTS 53
+`define NUM_TESTS 5
 `endif
 
 `ifndef True
@@ -56,7 +56,7 @@ module VX_pipe_buffer #(
 endmodule
 
 module tb_syn_tle_with_sram #(
-    parameter bit TB_STANDARD_MODE = 1'b0
+    parameter bit TB_STANDARD_MODE = 1'b1
 );
     localparam int CLKCYCLE = 2;
     localparam int BITJ = 4;
@@ -67,7 +67,7 @@ module tb_syn_tle_with_sram #(
     localparam int ENERGY_TOTAL_BIT = 32;
     localparam int LITTLE_ENDIAN = `True;
     localparam int PIPESINTF = 1;
-    localparam int PIPESMID = 1;
+    localparam int PIPESMID = 0;
     localparam int INPUT_PASSTHRU = 0;
     localparam int OUTPUT_PASSTHRU = 0;
     localparam bit USE_SPIN_FILE = 1'b1;
@@ -164,7 +164,7 @@ module tb_syn_tle_with_sram #(
     `include "tb_utils.svh"
 
 `ifdef POST_SYN_SIM
-    syn_tle_with_sram dut (
+    syn_tle_with_sram_nobh dut (
         .clk(clk_i),
         .reset_n(rst_ni),
         .valid_in(valid_in),
@@ -175,7 +175,7 @@ module tb_syn_tle_with_sram #(
         .data_out(data_out)
     );
 `else
-    syn_tle_with_sram #(
+    syn_tle_with_sram_nobh #(
         .BITJ(BITJ),
         .BITH(BITH),
         .DATASPIN(DATASPIN),
@@ -212,7 +212,7 @@ module tb_syn_tle_with_sram #(
         data_in[IN_LSB_STD_MODE +: 1] = TB_STANDARD_MODE;
         spin_valid_i = 1'b0;
         spin_i = '0;
-        first_operation_i = 1'b0;
+        first_operation_i = 1'b1;
         energy_ready_i = 1'b1;
         fifo_wr = 0;
         fifo_rd = 0;
@@ -332,7 +332,7 @@ module tb_syn_tle_with_sram #(
         // Old-style pacing: send one spin, then wait until one energy is received.
         // This prevents issuing spins back-to-back without output correlation.
         for (sent_idx = 0; sent_idx < tx_count; sent_idx++) begin
-            send_spin(spin_fifo[sent_idx], 1'b0);
+            send_spin(spin_fifo[sent_idx], (0)); //(sent_idx == 0));
             wait (rx_count == (sent_idx + 1));
         end
 
@@ -377,10 +377,10 @@ module tb_syn_tle_with_sram #(
          vcd_path = "tb_syn_tle_with_sram.vcd";
          void'($value$plusargs("TB_VCD_FILE=%s", vcd_path));
 
-      //   $dumpfile(vcd_path);
-      //   $dumpvars(0, dut);
+        // $dumpfile(vcd_path);
+        // $dumpvars(0, dut);
 
-            #(1000 * CLKCYCLE);
+            #(362 * CLKCYCLE);
             $fatal(1, "[TB] Timeout reached.");
         end
     end

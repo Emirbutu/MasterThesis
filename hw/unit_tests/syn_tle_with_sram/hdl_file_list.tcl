@@ -10,7 +10,7 @@ set HDL_FILES [ list \
     "${HDL_PATH}/tc_sram_syn.sv" \
     "/users/micas/micas/design/tsmc28hpcplus/memories/compilers/MC2/tsn28hpcpuhdspsram_20120200_170a/ts1n28hpcpuhdhvtb64x256m1swbso_170a/VERILOG/ts1n28hpcpuhdhvtb64x256m1swbso_170a_tt0p9v25c.v" \
     "${HDL_PATH}/energy_monitor/energy_monitor.sv" \
-    "${HDL_PATH}/syn_tle_with_sram.sv" \
+    "${HDL_PATH}/syn_tle_with_sram_nobh.sv" \
     "${HDL_PATH}/lib/bp_pipe.sv" \
     "${HDL_PATH}/include/registers.svh" \
     "${HDL_PATH}/energy_monitor/vector_caching.sv" \

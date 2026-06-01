@@ -1,0 +1,3 @@
+Invalid option: /users/students/r1024900/MasterThesis
+Swirl: Synthesis script
+Usage: ./ci/run-syn.tcl [[--clk_period=#n] [--syn_module=#name] [--sram] [--output_dir=#path] [--retime] [--help]]

@@ -1,0 +1,8 @@
+{
+  "case_id": 1,
+  "iterations": 512,
+  "total_changed_spins": 11102,
+  "mean_changed_spins": 21.68359375,
+  "total_no_replication_cycles": 3379,
+  "mean_no_replication_cycles": 6.599609375
+}

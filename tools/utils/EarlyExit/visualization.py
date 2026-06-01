@@ -610,7 +610,7 @@ def plot_percentage_stop_drop_comparison_avg(
     case_data_2: EarlyExitCaseData,
     reserve_fractions: Sequence[float] = (0.05, 0.10, 0.15, 0.20, 0.25),
     mode: str = "propagated",
-    title: str = "Average Early-Stop Accuracy Drop (cases 1 & 2)",
+    title: str = "Average Early-Stop Accuracy Drop Across Cases 1 and 2",
     figsize: tuple[float, float] = (12.0, 6.0),
     dpi: int = 150,
     output_path: str | Path | None = None,
@@ -647,11 +647,12 @@ def plot_percentage_stop_drop_comparison_avg(
             label=f"reserve {float(reserve_fraction) * 100:.0f}%",
         )
 
-    ax.set_title(title)
-    ax.set_xlabel("Iteration transition")
-    ax.set_ylabel("Average accuracy drop (%) = 100 - accuracy")
+    ax.set_title(title, fontsize=20)
+    ax.set_xlabel("Iteration transition", fontsize=18)
+    ax.set_ylabel("Average accuracy drop (%) = 100 - accuracy", fontsize=18)
+    ax.tick_params(axis="both", labelsize=16)
     ax.grid(True, alpha=0.3)
-    ax.legend(loc="best")
+    ax.legend(loc="best", fontsize=16)
 
     fig.tight_layout()
 
@@ -659,6 +660,7 @@ def plot_percentage_stop_drop_comparison_avg(
         out = Path(output_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(out, bbox_inches="tight")
+        fig.savefig(out.with_suffix(".pdf"), bbox_inches="tight")
 
     if show:
         plt.show()

@@ -48,13 +48,13 @@
 // -- All spins are 1, all weights are +7, hbias=+7, hscaling=16, 20 same cases
 // -- All spins are 0, all weights are -7, hbias=-7, hscaling=16, 20 same cases
 // -- All spins and weights are random, hbias and hscaling are random, 1,000,000 different cases
-//Emirhan Notes: Emirhan bu standard mode olan onceki versiyon baseline olarak kullanirsin
+//Emirhan Notes: this is fast mode and I need to ignore first operation otherwise it wont stuck first operation should be zero all the time oon testbench
 //First operation might be created when enable signal becomes high but need to know how we use enable signal exactly
 `include "../include/registers.svh"
 `define True 1'b1
 `define False 1'b0
 `define LOG2UP(x)   (((x) > 1) ? $clog2(x) : 1)
-module energy_monitor #(
+module energy_monitor_baseline #(
     parameter int BITJ = 4,
     parameter int BITH = 4,
     parameter int DATASPIN = 256,
@@ -62,8 +62,8 @@ module energy_monitor #(
     parameter int PARALLELISM = 4,
     parameter int ENERGY_TOTAL_BIT = 32,
     parameter int LITTLE_ENDIAN = `True,
-    parameter int PIPESINTF = 1,
-    parameter int PIPESMID = 1,
+    parameter int PIPESINTF = 0,
+    parameter int PIPESMID = 0,
     parameter int LOCAL_ENERGY_BIT = $clog2(DATASPIN) + BITH + SCALING_BIT ,
     parameter int DATAJ = DATASPIN * BITJ * PARALLELISM,
     parameter int DATAH = BITH * PARALLELISM,
@@ -73,7 +73,6 @@ module energy_monitor #(
     input logic clk_i,
     input logic rst_ni,
     input logic en_i,
-    input logic stop_i,
     input logic standard_mode_i, // Enables energy difference calculation mode if it is 0,but I think it doesnt make 
                                  // sense to read it constantly, can be a config signal
     input logic first_operation_i, 
@@ -116,7 +115,7 @@ module energy_monitor #(
     logic unsigned [DATASCALING-1:0] hscaling_pipe;
     logic weight_valid_pipe;
     logic weight_ready_pipe;
-    logic stop_sampled;
+
     logic weight_ready_masked;
     logic [DATASPIN-1:0] spin_flipped;
     logic [DATASPIN-1:0] spin_unflipped;
@@ -125,7 +124,7 @@ module energy_monitor #(
     logic [SPINIDX_BIT-1:0] counter_q;
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] counter_q_diff;
     logic [$clog2(DATASPIN/PARALLELISM+1)-1:0] counter_q_sram;
-    logic counter_ready;
+    
     logic counter_ready_diff;
     logic counter_ready_sram;
     logic counter_load_sram;
@@ -163,14 +162,7 @@ module energy_monitor #(
     logic weight_handshake;
     logic energy_handshake;
     logic [PIPESMID:0] weight_handshake_accum;
-    localparam int WEIGHT_PIPE_DATAW = DATAJ + DATAH + DATASCALING;
-
-    logic [PIPESINTF:0][SPINIDX_BIT-1:0] config_counter_pipe_stages;
-    logic [PIPESINTF:0] config_valid_pipe_stages;
-    logic [PIPESINTF:0][DATASPIN-1:0] spin_pipe_stages;
-    logic [PIPESINTF:0] spin_valid_pipe_stages;
-    logic [PIPESINTF:0][WEIGHT_PIPE_DATAW-1:0] weight_pipe_stages;
-    logic [PIPESINTF:0] weight_valid_pipe_stages;
+    localparam logic signed [ENERGY_TOTAL_BIT-1:0] ENERGY_RESET = 0;
   
     genvar i,j;
     genvar i_weight_raddr;
@@ -185,10 +177,9 @@ module energy_monitor #(
     `FFL(spin_handshake_d, spin_handshake, 1'b1, 1'b0, clk_i, rst_ni)
     `FFLARNC(first_operation_sampled, 1'b1, first_operation_i, energy_handshake, 1'b0, clk_i, rst_ni)
     `FF(energy_valid_o_d, energy_valid_o, 1'b0, clk_i, rst_ni)
-    `FFL(energy_o_stored, energy_o, energy_valid_o_pulse, 1'b0, clk_i, rst_ni)
+    `FFL(energy_o_stored, energy_o, energy_valid_o_pulse, ENERGY_RESET, clk_i, rst_ni)
     assign spin_ready_o = spin_ready_pipe;
-    `FFLARNC(stop_sampled, 1'b1, stop_i, energy_handshake && !stop_i, 1'b0, clk_i, rst_ni)
-    assign weight_ready_masked = weight_ready_pipe && !stop_sampled;
+    assign weight_ready_masked = weight_ready_pipe;
     assign weight_ready_o = weight_ready_masked;
     assign counter_spin_o = counter_q;
     assign spin_handshake = spin_valid_pipe && spin_ready_pipe;
@@ -198,54 +189,25 @@ module energy_monitor #(
     assign weight_handshake_accum[0] = weight_handshake;
     assign energy_valid_o_pulse = energy_valid_o & ~energy_valid_o_d;
     //Might need to use spin_ready_o signal of the control unit
-    assign accum_prev_energy_valid = spin_handshake_pulse && !first_operation_sampled && !standard_mode_i;
+
     assign accum_data_in = accum_prev_energy_valid ? energy_o_stored : local_energy_parallel;
-    assign accum_valid_in = accum_prev_energy_valid || weight_handshake_accum[PIPESMID];
+    assign accum_valid_in = weight_handshake_accum[PIPESMID];
     generate
         for (i = 0; i < PIPESMID; i++) begin: gen_weight_handshake_accum
             `FFL(weight_handshake_accum[i+1], weight_handshake_accum[i], en_i, 1'b0, clk_i, rst_ni)
         end
     endgenerate
 
-    // Regular pipelines (global-stall shift registers), replacing bp_pipe
-    assign config_counter_pipe_stages[0] = config_counter_i;
-    assign config_valid_pipe_stages[0] = config_valid_i;
-    assign config_counter_pipe = config_counter_pipe_stages[PIPESINTF];
-    assign config_valid_pipe = config_valid_pipe_stages[PIPESINTF];
+    // Input interface signals are used directly to remove the fixed PIPESINTF latency.
+    assign config_counter_pipe = config_counter_i;
+    assign config_valid_pipe = config_valid_i;
     assign config_ready_o = config_ready_pipe;
 
-    assign spin_pipe_stages[0] = spin_i;
-    assign spin_valid_pipe_stages[0] = spin_valid_i;
-    assign spin_pipe = spin_pipe_stages[PIPESINTF];
-    assign spin_valid_pipe = spin_valid_pipe_stages[PIPESINTF];
+    assign spin_pipe = spin_i;
+    assign spin_valid_pipe = spin_valid_i;
 
-    generate
-        if (PIPESINTF > 0) begin : gen_input_pipes
-            for (genvar pipe_idx = 0; pipe_idx < PIPESINTF; pipe_idx++) begin : gen_config_pipe_regs
-                `FFL(config_counter_pipe_stages[pipe_idx+1], config_counter_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
-                `FFL(config_valid_pipe_stages[pipe_idx+1], config_valid_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
-            end
-
-            for (genvar pipe_idx = 0; pipe_idx < PIPESINTF; pipe_idx++) begin : gen_spin_pipe_regs
-                `FFL(spin_pipe_stages[pipe_idx+1], spin_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
-                `FFL(spin_valid_pipe_stages[pipe_idx+1], spin_valid_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
-            end
-        end
-    endgenerate
-
-    assign weight_pipe_stages[0] = {weight_i, hbias_i, hscaling_i};
-    assign weight_valid_pipe_stages[0] = weight_valid_i;
-    assign {weight_pipe, hbias_pipe, hscaling_pipe} = weight_pipe_stages[PIPESINTF];
-    assign weight_valid_pipe = weight_valid_pipe_stages[PIPESINTF];
-
-    generate
-        if (PIPESINTF > 0) begin : gen_weight_pipe
-            for (genvar pipe_idx = 0; pipe_idx < PIPESINTF; pipe_idx++) begin : gen_weight_pipe_regs
-                `FFL(weight_pipe_stages[pipe_idx+1], weight_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
-                `FFL(weight_valid_pipe_stages[pipe_idx+1], weight_valid_pipe_stages[pipe_idx], en_i, '0, clk_i, rst_ni)
-            end
-        end
-    endgenerate
+    assign {weight_pipe, hbias_pipe, hscaling_pipe} = {weight_i, hbias_i, hscaling_i};
+    assign weight_valid_pipe = weight_valid_i;
     // Logic FSM
     logic_ctrl #(
         .PIPESMID(PIPESMID),
@@ -265,36 +227,21 @@ module energy_monitor #(
         .spin_ready_o(spin_ready_pipe),
         .weight_valid_i(weight_valid_pipe),
         .weight_ready_o(weight_ready_pipe),
-        .counter_ready_i((standard_mode_i | first_operation_sampled) ? counter_ready : counter_ready_diff),
+        .counter_ready_i(counter_ready_diff),
         .cmpt_done_i(cmpt_done),
         .energy_valid_o(energy_valid_o),
         .energy_ready_i(energy_ready_i),
         .debug_en_i(1'b0) // disable debug_en_i
     );
     
-    // Counter path
-    step_counter #(
-        .COUNTER_BITWIDTH(SPINIDX_BIT),
-        .PARALLELISM(PARALLELISM)
-    ) u_step_counter (
-        .clk_i(clk_i),
-        .rst_ni(rst_ni),
-        .en_i(en_i),
-        .load_i(config_valid_pipe && config_ready_pipe),
-        .d_i(config_counter_pipe),
-        .recount_en_i(spin_handshake),
-        .step_en_i(weight_handshake),
-        .q_o(counter_q),
-        .overflow_o(counter_ready)
-    );
-    // Counter path for energy difference calculation
+    
     step_counter #(
         .COUNTER_BITWIDTH($clog2(DATASPIN/PARALLELISM+1)),
-        .PARALLELISM(1) // Always 1 
+        .PARALLELISM(PARALLELISM) // Always 1 
     ) u_step_counter_diff (
         .clk_i(clk_i),
         .rst_ni(rst_ni),
-        .en_i(en_i && !standard_mode_i && !first_operation_sampled),
+        .en_i(en_i ),
         .load_i(max_flipped_count_valid),
         .d_i(max_flipped_count),
         .recount_en_i(spin_handshake),
@@ -304,13 +251,10 @@ module energy_monitor #(
     );
 
     always_comb begin
-        if (standard_mode_i || first_operation_sampled) begin
+  
             counter_load_sram = config_valid_pipe && config_ready_pipe;
             counter_d_sram = config_counter_pipe / PARALLELISM;
-        end else begin
-            counter_load_sram = max_flipped_count_valid;
-            counter_d_sram = max_flipped_count;
-        end
+        
     end
 
      // Counter to control SRAM accesses
@@ -342,97 +286,17 @@ module energy_monitor #(
         .data_cached_o(spin_cached_reg) // Updated 1 cycle later than spin_cached
     );
 
-    // Generate flipped/unflipped spin vectors
-    spin_flip_detector #(
-        .DATAWIDTH(DATASPIN)
-    ) u_spin_flipped (
-        .clk_i(clk_i),
-        .rst_ni(rst_ni),
-        .clear_i(energy_valid_o_pulse),
-        .en_i(en_i && !standard_mode_i && !first_operation_sampled),
-        .data_valid_i(spin_handshake_pulse),
-        .spin_previous_i(spin_cached_reg),
-        .spin_i(spin_pipe),
-        .spin_flipped_o(spin_flipped),
-        .spin_unflipped_o(spin_unflipped)
-    );
-
-    // Count number of flipped bits using parallel population counters
-    // when spin_handshake goes from 1 to 0, spin_flipped is generated based on previous and current spins
-    // Each counter processes interleaved bits: counter[i] gets bits i, i+PARALLELISM, i+2*PARALLELISM, ...
-    generate
-        for (i = 0; i < PARALLELISM; i++) begin: gen_popcount_parallel
-            adder_tree_unsigned #(
-                .N(BITS_PER_CHUNK),
-                .DATAW(1),
-                .PIPES(0)
-            ) u_popcount_flipped (
-                .clk_i(clk_i),
-                .rst_ni(rst_ni),
-                .en_i(en_i && !standard_mode_i && !first_operation_sampled),
-                .data_valid_i(spin_handshake_pulse),
-                .data_i(spin_flipped_interleaved_array[i]),
-                .sum_o(flipped_count[i]),
-                .data_valid_o(spin_handshake_sampled[i]) // 
-            );
-        end
-    endgenerate
-    // Find maximum flipped count
-    find_max #(
-        .N(PARALLELISM),
-        .DATAW($clog2(DATASPIN/PARALLELISM+1))
-    ) u_find_max (
-        .clk_i(clk_i),
-        .rst_ni(rst_ni),
-        .en_i(en_i && !standard_mode_i && !first_operation_sampled),
-        .valid_i(spin_handshake_sampled[0]), // all sampled signals are aligned
-        .data_i(flipped_count),
-        .valid_o(max_flipped_count_valid),
-        .max_o(max_flipped_count),
-        .zero_o(max_flipped_count_zero)
-    );
-    // Find all '1' positions in flipped spin vector
-    generate
-    for (i = 0; i < PARALLELISM; i++) begin: gen_find_all_ones
-        logic [BITS_PER_CHUNK-1:0][`LOG2UP(BITS_PER_CHUNK)-1:0] flipped_positions;
-        logic [BITS_PER_CHUNK-1:0] flipped_valid;
-
-        find_all_ones_iterative #(
-            .N(BITS_PER_CHUNK)
-        ) u_find_all_ones (
-            .clk_i(clk_i),
-            .rst_ni(rst_ni),
-            .start_i(spin_handshake_sampled[0]), // or another suitable handshake
-            .data_i(spin_flipped_interleaved_array[i]),
-            .positions(flipped_positions),
-            .valid_o(flipped_valid),
-            .count(), // connect if needed
-            .done(),  // connect if needed
-            .empty_o() // connect if needed
-        );
-
-        // Assign outputs to packed arrays for legal variable indexing
-        always_comb begin
-            flipped_valid_array[i] = flipped_valid;
-            flipped_positions_array[i] = flipped_positions;
-        end
-    end
-endgenerate
+   
 
     always_comb begin
         for (int i = 0; i < PARALLELISM; i++) begin
-            if (!standard_mode_i && !first_operation_sampled && !flipped_valid_array[i][counter_q_diff]) begin
-                for (int j = 0; j < DATASPIN; j++) begin
-                    weight_pipe_flipped_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] = '0;
-                end
-            end else begin
                 for (int j = 0; j < DATASPIN; j++) begin
                     weight_pipe_flipped_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
                         weight_pipe[i*BITJ*DATASPIN + j*BITJ +: BITJ];
                 end
             end
         end
-    end
+
 
     always_comb begin
         for (int j = 0; j < DATASPIN; j++) begin
@@ -444,14 +308,9 @@ endgenerate
     end
 
     always_comb begin
-        hbias_i_masked = '0;
         for (int i = 0; i < PARALLELISM; i++) begin
-            if (first_operation_sampled || standard_mode_i) begin
                 hbias_i_masked[i*BITH +: BITH] = hbias_pipe[i*BITH +: BITH];
-            end else begin
-                hbias_i_masked[i*BITH +: BITH] =
-                    (!flipped_valid_array[i][counter_q_diff]) ? '0 : hbias_pipe[i*BITH +: BITH];
-            end
+           
         end
     end
 
@@ -459,10 +318,7 @@ endgenerate
     always_comb begin
         for (int i = 0; i < PARALLELISM; i++) begin
             for (int j = 0; j < DATASPIN; j++) begin
-                weight_selected[i*BITJ*DATASPIN + j*BITJ +: BITJ] =
-                    (first_operation_sampled | standard_mode_i)
-                    ? weight_pipe[i*BITJ*DATASPIN + j*BITJ +: BITJ]
-                    : weight_masked[i*BITJ*DATASPIN + j*BITJ +: BITJ];
+                weight_selected[i*BITJ*DATASPIN + j*BITJ +: BITJ] = weight_pipe[i*BITJ*DATASPIN + j*BITJ +: BITJ];
             end
         end
     end
@@ -471,19 +327,11 @@ endgenerate
         for (genvar i = 0; i < PARALLELISM; i++) begin: gen_current_spin_raw
             if (LITTLE_ENDIAN == `True) begin
                 always_comb begin
-                    if (first_operation_sampled | standard_mode_i) begin
-                        current_spin_raw[i] = en_i ? spin_cached[counter_q + i] : 1'b0;
-                    end else begin
-                        current_spin_raw[i] = en_i ? spin_cached[PARALLELISM * flipped_positions_array[i][counter_q_diff] + i] : 1'b0;
-                    end
+                   current_spin_raw[i] = en_i ? spin_cached[counter_q + i] : 1'b0;
                 end
             end else begin
                 always_comb begin
-                    if (first_operation_sampled | standard_mode_i) begin
-                        current_spin_raw[i] = en_i ? spin_cached[DATASPIN - 1 - counter_q - i] : 1'b0;
-                    end else begin
-                        current_spin_raw[i] = en_i ? spin_cached[DATASPIN - 1 - (PARALLELISM * flipped_positions_array[i][counter_q_diff] + i)] : 1'b0;
-                    end
+                   current_spin_raw[i] = en_i ? spin_cached[DATASPIN - 1 - counter_q - i] : 1'b0;
                 end
             end
         end
@@ -555,13 +403,9 @@ endgenerate
     generate
         for (i_weight_raddr = 0; i_weight_raddr < PARALLELISM; i_weight_raddr = i_weight_raddr + 1) begin : gen_weight_raddr_em_o
             always_comb begin
-                if (first_operation_sampled || standard_mode_i) begin
                     weight_raddr_em_o[i_weight_raddr] = counter_q_sram;
                     weight_raddr_valid_em_o[i_weight_raddr] = 1'b1;
-                end else begin
-                    weight_raddr_em_o[i_weight_raddr] = flipped_positions_array[i_weight_raddr][counter_q_sram] ;
-                    weight_raddr_valid_em_o[i_weight_raddr] =  flipped_valid_array[i_weight_raddr][counter_q_sram];
-                end
+               
             end
         end
     endgenerate

@@ -1,0 +1,44 @@
+Running synthesis with the following parameters:
+  SYN_MODULE=syn_tle_with_sram_nobh
+  SRAM=0
+  CLK_SPD=2500
+  RETIME=1
+  OUTPUT_DIR=/users/students/r1024900/MasterThesis/target/syn/outputs/syn_tle_with_sram_nobh/C2500_RT1
+/users/students/r1024900/MasterThesis
+No DISPLAY environment variable set.
+GUI mode requires a valid DISPLAY.
+Reverting to shell mode.
+
+TMPDIR is being set to /tmp/genus_temp_1624644_eridani5.esat.kuleuven.be_r1024900_rPx2Xz
+Cadence Genus(TM) Synthesis Solution.
+Copyright 2024 Cadence Design Systems, Inc. All rights reserved worldwide.
+Cadence and the Cadence logo are registered trademarks and Genus is a trademark
+of Cadence Design Systems, Inc. in the United States and other countries.
+
+[23:43:53.411041] Configured Lic search path (22.01-s003): /esat/micas-data/software/Cadence/ddi_22.35/GENUS221/share/license/license.dat
+
+Version: 22.15-s086_1, built Wed Feb 28 07:52:45 PST 2024
+Options: -legacy_ui -overwrite -files ../syn.tcl -log genCompile.log 
+Date:    Mon May 18 23:43:53 2026
+Host:    eridani5.esat.kuleuven.be (x86_64 w/Linux 4.18.0-553.120.1.el8_10.x86_64) (1core*8cpus*8physical cpus*Intel Core Processor (Skylake, IBRS, no TSX) 16384KB) (65943392KB)
+PID:     1624644
+OS:      Rocky Linux release 8.10 (Green Obsidian)
+
+Checking out license: Genus_Synthesis
+[23:43:53.471448] Periodic Lic check successful
+[23:43:53.471459] Feature usage summary:
+[23:43:53.471459] Genus_Synthesis
+
+
+
+***********************************************************************************************************
+***********************************************************************************************************
+
+
+
+Finished executable startup (1 second elapsed).
+
+Loading tool scripts...
+Another Ctrl-C within 1 second will terminate the tool.
+CURRENT RESOURCES: RT {elapsed: 1s, ST: 1s, FG: 1s, CPU: 100.0%}, MEM {curr: 0.7G, peak: 0.7G, phys curr: 0.2G, phys peak: 0.2G}, SYS {load: 4.0, cpu: 8, total: 62.9G, free: 34.6G}
+Abnormal exit.

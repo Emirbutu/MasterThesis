@@ -55,6 +55,11 @@ def parse_args() -> argparse.Namespace:
         help="Skip post-simulation analyzer execution",
     )
     parser.add_argument(
+        "--no-bias",
+        action="store_true",
+        help="Run the testbench in no-bias mode (passes NO_BIAS=1 as a define)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print the command without executing it",
@@ -89,6 +94,16 @@ def build_command(args: argparse.Namespace, run_script: Path) -> list[str]:
         cmd.append("--gui")
     if defines:
         cmd.append(f"--defines={defines}")
+    if getattr(args, "no_bias", False):
+        # Append NO_BIAS=1 to defines passed to ut-run.sh
+        if defines:
+            # modify the last --defines entry in cmd
+            for idx, token in enumerate(cmd):
+                if token.startswith("--defines="):
+                    cmd[idx] = f"--defines={defines} NO_BIAS=1"
+                    break
+        else:
+            cmd.append("--defines=NO_BIAS=1")
     if args.clean:
         cmd.append("--clean")
     if args.clean_only:
@@ -170,6 +185,8 @@ def main() -> int:
         str(compare_csv),
         "--strict",
     ]
+    if getattr(args, "no_bias", False):
+        analyze_cmd.append("--no-bias")
 
     print("[run_ut] Analyzer:", " ".join(analyze_cmd))
     analyzed = subprocess.run(

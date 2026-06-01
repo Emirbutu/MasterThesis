@@ -34,7 +34,7 @@ class TraceRow:
     test_id: int
     spin_hex: str
     spin_ones: int
-    energy_dut: int
+    energy_dut: int | None
 
 
 @dataclass(frozen=True)
@@ -44,9 +44,9 @@ class ComparisonRow:
     test_id: int
     spin_hex: str
     spin_ones: int
-    energy_dut: int
-    energy_ref: int
-    diff: int
+    energy_dut: int | None
+    energy_ref: int | None
+    diff: int | None
 
 
 def parse_args() -> argparse.Namespace:
@@ -97,6 +97,11 @@ def parse_args() -> argparse.Namespace:
         "--strict",
         action="store_true",
         help="Return non-zero if any mismatch is found",
+    )
+    parser.add_argument(
+        "--no-bias",
+        action="store_true",
+        help="Treat hbias/hscaling as zero (skip hbias-related checks)",
     )
     return parser.parse_args()
 
@@ -237,16 +242,28 @@ def parse_trace_csv(csv_path: Path) -> list[TraceRow]:
             raise ValueError(f"CSV is missing required columns: {sorted(missing)}")
 
         for row in reader:
-            rows.append(
-                TraceRow(
-                    time_ns=int(row["time_ns"]),
-                    cycle=int(row["cycle"]),
-                    test_id=int(row["test_id"]),
-                    spin_hex=row["spin_hex"].strip().lower(),
-                    spin_ones=int(row["spin_ones"]),
-                    energy_dut=int(row["energy"]),
+                energy_field = row["energy"].strip().lower()
+                energy_val: int | None
+                try:
+                    energy_val = int(energy_field)
+                except Exception:
+                    # Accept 'x'/'z' or other non-numeric markers as unknown
+                    if energy_field in {"x", "z", "-", "na", "n/a", ""}:
+                        energy_val = None
+                    else:
+                        # Unexpected non-integer — propagate error
+                        raise
+
+                rows.append(
+                    TraceRow(
+                        time_ns=int(row["time_ns"]),
+                        cycle=int(row["cycle"]),
+                        test_id=int(row["test_id"]),
+                        spin_hex=row["spin_hex"].strip().lower(),
+                        spin_ones=int(row["spin_ones"]),
+                        energy_dut=energy_val,
+                    )
                 )
-            )
     return rows
 
 
@@ -269,22 +286,46 @@ def analyze(
         raise ValueError("bits must be a multiple of 4")
 
     bank_lines = read_bank_lines(cde_dir, prefix, banks, words, hex_chars)
-    hs_bank_lines = read_bank_lines(cde_dir, hbias_scaling_prefix, hbias_scaling_banks, words, hex_chars)
     j_matrix = reconstruct_j_matrix(bank_lines, words, j_size)
-    hbias_vec, hscaling_vec = reconstruct_hbias_hscaling(
-        hs_bank_lines=hs_bank_lines,
-        words=words,
-        j_size=j_size,
-        hbias_bits=hbias_bits,
-        hscaling_bits=hscaling_bits,
-        parallelism=parallelism,
-    )
+
+    # If hbias checks are disabled, use zero hbias and unity scaling
+    if hbias_scaling_banks == 0:
+        hbias_vec = [0 for _ in range(j_size)]
+        hscaling_vec = [1 for _ in range(j_size)]
+    else:
+        hs_bank_lines = read_bank_lines(cde_dir, hbias_scaling_prefix, hbias_scaling_banks, words, hex_chars)
+        hbias_vec, hscaling_vec = reconstruct_hbias_hscaling(
+            hs_bank_lines=hs_bank_lines,
+            words=words,
+            j_size=j_size,
+            hbias_bits=hbias_bits,
+            hscaling_bits=hscaling_bits,
+            parallelism=parallelism,
+        )
     trace_rows = parse_trace_csv(csv_path)
 
     comparisons: list[ComparisonRow] = []
     diffs: list[int] = []
 
     for row in trace_rows:
+        if row.energy_dut is None:
+            # DUT produced unknown value; cannot compute numeric diff
+            comparisons.append(
+                ComparisonRow(
+                    time_ns=row.time_ns,
+                    cycle=row.cycle,
+                    test_id=row.test_id,
+                    spin_hex=row.spin_hex,
+                    spin_ones=row.spin_ones,
+                    energy_dut=None,
+                    energy_ref=None,
+                    diff=None,
+                )
+            )
+            # treat unknown as mismatch for summary purposes
+            diffs.append(None)
+            continue
+
         energy_ref = compute_reference_energy(j_matrix, hbias_vec, hscaling_vec, row.spin_hex)
         diff = row.energy_dut - energy_ref
         comparisons.append(
@@ -301,11 +342,14 @@ def analyze(
         )
         diffs.append(abs(diff))
 
+    # Filter numeric diffs for statistics
+    numeric_diffs = [d for d in diffs if isinstance(d, (int, float))]
+    num_mismatches = sum(1 for item in comparisons if (item.diff is None or item.diff != 0))
     summary: dict[str, int | float] = {
         "num_rows": len(comparisons),
-        "mismatches": sum(1 for item in comparisons if item.diff != 0),
-        "max_abs_diff": max(diffs) if diffs else 0,
-        "mean_abs_diff": mean(diffs) if diffs else 0.0,
+        "mismatches": num_mismatches,
+        "max_abs_diff": max(numeric_diffs) if numeric_diffs else 0,
+        "mean_abs_diff": mean(numeric_diffs) if numeric_diffs else 0.0,
         "first_test_id": comparisons[0].test_id if comparisons else -1,
         "last_test_id": comparisons[-1].test_id if comparisons else -1,
     }
@@ -318,16 +362,20 @@ def write_comparison_csv(out_csv: Path, comparisons: list[ComparisonRow]) -> Non
         writer = csv.writer(f)
         writer.writerow(["time_ns", "cycle", "test_id", "spin_hex", "spin_ones", "energy_dut", "energy_ref", "diff", "abs_diff"])
         for row in comparisons:
+            energy_dut = row.energy_dut if row.energy_dut is not None else "x"
+            energy_ref = row.energy_ref if row.energy_ref is not None else "x"
+            diff = row.diff if row.diff is not None else "x"
+            abs_diff = abs(row.diff) if row.diff is not None else "x"
             writer.writerow([
                 row.time_ns,
                 row.cycle,
                 row.test_id,
                 row.spin_hex,
                 row.spin_ones,
-                row.energy_dut,
-                row.energy_ref,
-                row.diff,
-                abs(row.diff),
+                energy_dut,
+                energy_ref,
+                diff,
+                abs_diff,
             ])
 
 
@@ -339,7 +387,7 @@ def main() -> int:
         prefix=args.prefix,
         hbias_scaling_prefix=args.hbias_scaling_prefix,
         banks=args.banks,
-        hbias_scaling_banks=args.hbias_scaling_banks,
+        hbias_scaling_banks=(0 if getattr(args, "no_bias", False) else args.hbias_scaling_banks),
         words=args.words,
         bits=args.bits,
         j_size=args.j_size,
