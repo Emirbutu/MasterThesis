@@ -17,7 +17,7 @@
 `endif
 
 `ifndef NUM_TESTS
-`define NUM_TESTS 53
+`define NUM_TESTS 514
 `endif
 
 `ifndef True
@@ -55,9 +55,7 @@ module VX_pipe_buffer #(
     assign valid_out = PASSTHRU ? valid_in : valid_q;
 endmodule
 
-module tb_syn_tle_with_sram #(
-    parameter bit TB_STANDARD_MODE = 1'b0
-);
+module tb_syn_tle_with_sram_baseline;
     localparam int CLKCYCLE = 2;
     localparam int BITJ = 4;
     localparam int BITH = 4;
@@ -66,12 +64,12 @@ module tb_syn_tle_with_sram #(
     localparam int PARALLELISM = 4;
     localparam int ENERGY_TOTAL_BIT = 32;
     localparam int LITTLE_ENDIAN = `True;
-    localparam int PIPESINTF = 1;
+    localparam int PIPESINTF = 0;
     localparam int PIPESMID = 0;
     localparam int INPUT_PASSTHRU = 0;
     localparam int OUTPUT_PASSTHRU = 0;
     localparam bit USE_SPIN_FILE = 1'b1;
-    localparam string SPIN_FILE_PATH = "/users/students/r1024900/MasterThesis/default/states_out_1_part";
+    localparam string SPIN_FILE_PATH = "/users/students/r1024900/MasterThesis/default/states_out_1";
 
     localparam int SPINIDX_BIT = $clog2(DATASPIN);
     localparam int DATAJ = DATASPIN * BITJ * PARALLELISM;
@@ -79,7 +77,7 @@ module tb_syn_tle_with_sram #(
     localparam int DATASCALING = SCALING_BIT * PARALLELISM;
     localparam int WEIGHT_ADDRW = $clog2(DATASPIN / PARALLELISM);
     localparam int WEIGHT_ADDR_BUSW = PARALLELISM * WEIGHT_ADDRW;
-    localparam int IN_DATAW = 1 + 1 + 1 + 1 + SPINIDX_BIT + 1 + DATASPIN + 1 + DATAJ + DATAH + DATASCALING;
+    localparam int IN_DATAW = 1 + 1 + SPINIDX_BIT + 1 + DATASPIN + 1 + DATAJ + DATAH + DATASCALING;
     localparam int OUT_DATAW = 1 + 1 + 1 + SPINIDX_BIT + WEIGHT_ADDR_BUSW + ENERGY_TOTAL_BIT;
 
     localparam int SRAM_DEPTH = DATASPIN / PARALLELISM;
@@ -89,9 +87,7 @@ module tb_syn_tle_with_sram #(
     localparam int SRAM_HSCALING_LSB = SRAM_WEIGHT_DWIDTH + BITH;
 
     localparam int IN_LSB_EN = 0;
-    localparam int IN_LSB_STD_MODE = IN_LSB_EN + 1;
-    localparam int IN_LSB_FIRST_OP = IN_LSB_STD_MODE + 1;
-    localparam int IN_LSB_CFG_VALID = IN_LSB_FIRST_OP + 1;
+    localparam int IN_LSB_CFG_VALID = IN_LSB_EN + 1;
     localparam int IN_LSB_CFG_COUNTER = IN_LSB_CFG_VALID + 1;
     localparam int IN_LSB_SPIN_VALID = IN_LSB_CFG_COUNTER + SPINIDX_BIT;
     localparam int IN_LSB_SPIN = IN_LSB_SPIN_VALID + 1;
@@ -119,7 +115,6 @@ module tb_syn_tle_with_sram #(
     logic spin_valid_i;
     logic [DATASPIN-1:0] spin_i;
     logic spin_ready_o;
-    logic first_operation_i;
     logic energy_valid_o;
     logic energy_ready_i;
     logic signed [ENERGY_TOTAL_BIT-1:0] energy_o;
@@ -164,7 +159,7 @@ module tb_syn_tle_with_sram #(
     `include "tb_utils.svh"
 
 `ifdef POST_SYN_SIM
-    syn_tle_with_sram_nobh dut (
+    syn_tle_with_sram_nobh_baseline dut (
         .clk(clk_i),
         .reset_n(rst_ni),
         .valid_in(valid_in),
@@ -175,7 +170,7 @@ module tb_syn_tle_with_sram #(
         .data_out(data_out)
     );
 `else
-    syn_tle_with_sram_nobh #(
+    syn_tle_with_sram_nobh_baseline #(
         .BITJ(BITJ),
         .BITH(BITH),
         .DATASPIN(DATASPIN),
@@ -209,10 +204,8 @@ module tb_syn_tle_with_sram #(
         valid_in = 1'b0;
         data_in = '0;
         data_in[IN_LSB_EN +: 1] = 1'b1;
-        data_in[IN_LSB_STD_MODE +: 1] = TB_STANDARD_MODE;
         spin_valid_i = 1'b0;
         spin_i = '0;
-        first_operation_i = 1'b1;
         energy_ready_i = 1'b1;
         fifo_wr = 0;
         fifo_rd = 0;
@@ -329,10 +322,10 @@ module tb_syn_tle_with_sram #(
             $display("[TB] Generated and queued %0d test vectors", tx_count);
         end
 
-        // Old-style pacing: send one spin, then wait until one energy is received.
-        // This prevents issuing spins back-to-back without output correlation.
+        // Pace the next spin directly from the next energy-valid pulse so the
+        // following transaction starts as soon as the DUT produces an output.
         for (sent_idx = 0; sent_idx < tx_count; sent_idx++) begin
-            send_spin(spin_fifo[sent_idx], (0)); //(sent_idx == 0));
+            send_spin(spin_fifo[sent_idx]);
             @(posedge energy_valid_o);
         end
 
@@ -380,7 +373,7 @@ module tb_syn_tle_with_sram #(
          $dumpfile(vcd_path);
          $dumpvars(0, dut);
 
-            #(720 * CLKCYCLE);
+            #(62 * CLKCYCLE);
             $fatal(1, "[TB] Timeout reached.");
         end
     end

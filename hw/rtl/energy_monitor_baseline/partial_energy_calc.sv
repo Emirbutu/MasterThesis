@@ -44,8 +44,6 @@ module partial_energy_calc #(
     input logic rst_ni,
     input logic en_i,
     input logic data_valid_i,
-    input logic standard_mode_i,
-    input logic first_operation_sampled,
     input logic [DATASPIN-1:0] spin_vector_i,
     input logic current_spin_i,
     input logic [DATAJ-1:0] weight_i,
@@ -83,7 +81,7 @@ module partial_energy_calc #(
     // ========================================================================
     // calculate hbias * scaling factor
     assign hbias_extended = {{(MULTBIT-BITH){hbias_i[BITH-1]}}, hbias_i}; // sign extension
-     assign hbias_extended_real = (standard_mode_i | first_operation_sampled) ? hbias_extended : 2 * hbias_extended;
+    assign hbias_extended_real =  hbias_extended;
     always_comb begin
         case(hscaling_i)
             'd1: hbias_scaled = hbias_extended_real;
@@ -133,7 +131,7 @@ module partial_energy_calc #(
         .ready_i(1'b1),
         .ready_o()
     );
-    assign energy_local_wo_hbias_real = (standard_mode_i | first_operation_sampled) ? energy_local_wo_hbias : 4 * energy_local_wo_hbias; 
+    assign energy_local_wo_hbias_real = energy_local_wo_hbias; 
     assign energy_local = energy_local_wo_hbias_real + hbias_scaled_pipe;
 
     // ========================================================================

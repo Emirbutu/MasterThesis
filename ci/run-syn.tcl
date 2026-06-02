@@ -12,7 +12,7 @@ set -e
 show_usage()
 {
     echo "Swirl: Synthesis script"
-    echo "Usage: $0 [[--clk_period=#n] [--syn_module=#name] [--sram] [--output_dir=#path] [--retime] [--help]]"
+    echo "Usage: $0 [[--clk_period=#n] [--syn_module=#name] [--hdl_list_tcl=#path] [--sram] [--output_dir=#path] [--retime] [--help]]"
 }
 
 show_help()
@@ -22,6 +22,7 @@ show_help()
     echo "Options:"
     echo "  --clk_period=#n: target clock period in ps (default: 10000)"
     echo "  --syn_module=#name: top module to synthesize (default: syn_tle)"
+    echo "  --hdl_list_tcl=#path: override the HDL file-list Tcl used by syn.tcl"
     echo "  --sram: synthesize syn_tle_with_sram instead of syn_tle"
     echo "  SRAM=1: environment-variable form of --sram"
     echo "  --retime: enable retiming (default: enabled)"
@@ -49,6 +50,10 @@ case $i in
         ;;
     --syn_module=*)
         SYN_MODULE="${i#*=}"
+        shift
+        ;;
+    --hdl_list_tcl=*)
+        ARCH_HDL_LIST_TCL="${i#*=}"
         shift
         ;;
     --sram)
@@ -95,6 +100,7 @@ fi
 
 echo "Running synthesis with the following parameters:"
 echo "  SYN_MODULE=$SYN_MODULE"
+echo "  ARCH_HDL_LIST_TCL=$ARCH_HDL_LIST_TCL"
 echo "  SRAM=$SRAM"
 echo "  CLK_SPD=$CLK_SPD"
 echo "  RETIME=$RETIME"
@@ -106,4 +112,4 @@ mkdir -p ./work
 cd ./work
 
 source /esat/micas-data/data/design/scripts/ddi_22.35.rc
-CLK_SPD=$CLK_SPD OUTPUT_DIR=$OUTPUT_DIR SYN_MODULE=$SYN_MODULE RETIME=$RETIME genus -legacy_ui -overwrite -files ../syn.tcl -log genCompile.log
+CLK_SPD=$CLK_SPD OUTPUT_DIR=$OUTPUT_DIR SYN_MODULE=$SYN_MODULE ARCH_HDL_LIST_TCL=$ARCH_HDL_LIST_TCL RETIME=$RETIME genus -legacy_ui -overwrite -files ../syn.tcl -log genCompile.log

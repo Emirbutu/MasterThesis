@@ -69,7 +69,9 @@ puts "Reading HDL files for ${DESIGN}"
 
 source ${INPUTS_DIR}/gen_hdl_list.tcl
 lappend HDL_LIST ${HDL_PATH}/syn_tle.sv
-I am running powif {$SYN_MODULE == "syn_tle_with_sram_nobh"} {
+if {$SYN_MODULE == "syn_tle_with_sram_nobh_baseline"} {
+    lappend HDL_LIST ${HDL_PATH}/syn_tle_with_sram_nobh_baseline.sv
+} elseif {$SYN_MODULE == "syn_tle_with_sram_nobh"} {
     lappend HDL_LIST ${HDL_PATH}/syn_tle_with_sram_nobh.sv
 } else {
     lappend HDL_LIST ${HDL_PATH}/syn_tle_with_sram.sv

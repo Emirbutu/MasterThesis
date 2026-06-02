@@ -22,5 +22,5 @@ set HDL_LIST [ list \
     ${HDL_PATH}/energy_monitor/step_counter.sv \
     ${HDL_PATH}/energy_monitor/vector_caching.sv \
     ${HDL_PATH}/energy_monitor/VX_find_first.sv \
-    ${HDL_PATH}/energy_monitor/energy_monitor.sv \
+    ${HDL_PATH}/energy_monitor/energy_monitor_nonstandard.sv \
 ]

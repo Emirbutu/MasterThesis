@@ -4,7 +4,7 @@
 `define True 1'b1
 `endif
 
-module syn_tle_with_sram_nobh #(
+module syn_tle_with_sram_nobh_baseline #(
     parameter int BITJ = 4,
     parameter int BITH = 4,
     parameter int DATASPIN = 256,
@@ -29,7 +29,7 @@ module syn_tle_with_sram_nobh #(
     parameter int SRAM_NUM_BANKS = PARALLELISM * SRAM_BANKS_PER_LANE,
     parameter int SRAM_BYTEW = 8,
     parameter int SRAM_BEW = (SRAM_WORD_DW + SRAM_BYTEW - 1) / SRAM_BYTEW,
-    parameter int IN_DATAW = 1 + 1 + 1 + 1 + SPINIDX_BIT + 1 + DATASPIN + 1 + DATAJ + DATAH + DATASCALING,
+    parameter int IN_DATAW = 1 + 1 + SPINIDX_BIT + 1 + DATASPIN + 1 + DATAJ + DATAH + DATASCALING,
     parameter int OUT_DATAW = 1 + 1 + 1 + SPINIDX_BIT + WEIGHT_ADDR_BUSW + ENERGY_TOTAL_BIT
 ) (
     input  wire                 clk,
@@ -61,9 +61,7 @@ module syn_tle_with_sram_nobh #(
     );
 
     localparam int IN_LSB_EN = 0;
-    localparam int IN_LSB_STD_MODE = IN_LSB_EN + 1;
-    localparam int IN_LSB_FIRST_OP = IN_LSB_STD_MODE + 1;
-    localparam int IN_LSB_CFG_VALID = IN_LSB_FIRST_OP + 1;
+    localparam int IN_LSB_CFG_VALID = IN_LSB_EN + 1;
     localparam int IN_LSB_CFG_COUNTER = IN_LSB_CFG_VALID + 1;
     localparam int IN_LSB_SPIN_VALID = IN_LSB_CFG_COUNTER + SPINIDX_BIT;
     localparam int IN_LSB_SPIN = IN_LSB_SPIN_VALID + 1;
@@ -73,8 +71,6 @@ module syn_tle_with_sram_nobh #(
     localparam int IN_LSB_HSCALING = IN_LSB_HBIAS + DATAH;
 
     wire in_en;
-    wire in_standard_mode;
-    wire in_first_operation;
     wire in_config_valid;
     wire [SPINIDX_BIT-1:0] in_config_counter;
     wire in_spin_valid;
@@ -84,8 +80,6 @@ module syn_tle_with_sram_nobh #(
     // hbias/hscaling will be forced to zero below
 
     assign in_en = ib_data_out[IN_LSB_EN +: 1];
-    assign in_standard_mode = ib_data_out[IN_LSB_STD_MODE +: 1];
-    assign in_first_operation = ib_data_out[IN_LSB_FIRST_OP +: 1];
     assign in_config_valid = ib_data_out[IN_LSB_CFG_VALID +: 1];
     assign in_config_counter = ib_data_out[IN_LSB_CFG_COUNTER +: SPINIDX_BIT];
     assign in_spin_valid = ib_data_out[IN_LSB_SPIN_VALID +: 1];
@@ -138,22 +132,22 @@ module syn_tle_with_sram_nobh #(
                     : SRAM_WORD_DW;
                 localparam int BANK_FLAT = i * SRAM_BANKS_PER_LANE + b;
                 localparam INIT_FILE =
-                    (BANK_FLAT == 0)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank00.cde" :
-                    (BANK_FLAT == 1)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank01.cde" :
-                    (BANK_FLAT == 2)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank02.cde" :
-                    (BANK_FLAT == 3)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank03.cde" :
-                    (BANK_FLAT == 4)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank04.cde" :
-                    (BANK_FLAT == 5)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank05.cde" :
-                    (BANK_FLAT == 6)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank06.cde" :
-                    (BANK_FLAT == 7)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank07.cde" :
-                    (BANK_FLAT == 8)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank08.cde" :
-                    (BANK_FLAT == 9)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank09.cde" :
-                    (BANK_FLAT == 10) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank10.cde" :
-                    (BANK_FLAT == 11) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank11.cde" :
-                    (BANK_FLAT == 12) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank12.cde" :
-                    (BANK_FLAT == 13) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank13.cde" :
-                    (BANK_FLAT == 14) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank14.cde" :
-                    "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank15.cde";
+                    (BANK_FLAT == 0)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank00.cde" :
+                    (BANK_FLAT == 1)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank01.cde" :
+                    (BANK_FLAT == 2)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank02.cde" :
+                    (BANK_FLAT == 3)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank03.cde" :
+                    (BANK_FLAT == 4)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank04.cde" :
+                    (BANK_FLAT == 5)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank05.cde" :
+                    (BANK_FLAT == 6)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank06.cde" :
+                    (BANK_FLAT == 7)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank07.cde" :
+                    (BANK_FLAT == 8)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank08.cde" :
+                    (BANK_FLAT == 9)  ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank09.cde" :
+                    (BANK_FLAT == 10) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank10.cde" :
+                    (BANK_FLAT == 11) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank11.cde" :
+                    (BANK_FLAT == 12) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank12.cde" :
+                    (BANK_FLAT == 13) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank13.cde" :
+                    (BANK_FLAT == 14) ? "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank14.cde" :
+                    "/users/students/r1024900/MasterThesis/hw/unit_tests/syn_tle_with_sram_baseline/TS1N28HPCPUHDHVTB64X256M1SWBSO_initial_bank15.cde";
 
                 wire [0:0] sram_req_1p;
                 wire [0:0] sram_we_1p;
@@ -218,7 +212,7 @@ module syn_tle_with_sram_nobh #(
         end
     end
 
-    energy_monitor_nonstandard #(
+    energy_monitor_baseline #(
         .BITJ(BITJ),
         .BITH(BITH),
         .DATASPIN(DATASPIN),
@@ -232,8 +226,6 @@ module syn_tle_with_sram_nobh #(
         .clk_i(clk),
         .rst_ni(reset_n),
         .en_i(in_en),
-        .standard_mode_i(in_standard_mode),
-        .first_operation_i(in_first_operation),
         .config_valid_i(ib_valid_out && in_config_valid),
         .config_counter_i(in_config_counter),
         .config_ready_o(dut_config_ready),

@@ -37,11 +37,6 @@ module logic_ctrl #(
     input logic clk_i,
     input logic rst_ni,
     input logic en_i,
-    input logic standard_mode_i,
-    input logic first_operation_sampled_i,
-    input logic max_flipped_count_valid,
-    input logic max_flipped_count_zero_i,
-    input logic [MAX_FLIPPED_COUNT_W-1:0] max_flipped_count_i,
 
     input logic config_valid_i,
     output logic config_ready_o,
@@ -63,8 +58,7 @@ module logic_ctrl #(
     // State enumeration
     typedef enum logic [1:0] {
         IDLE = 2'b00,
-        COMPUTE_STANDARD = 2'b01,
-        COMPUTE_NONSTANDARD = 2'b10
+        COMPUTE_STANDARD = 2'b01
     } state_t;
     state_t current_state, next_state;
 
@@ -73,7 +67,6 @@ module logic_ctrl #(
     logic energy_valid_comb;
     logic energy_valid_reg;
     logic energy_handshake;
-    logic nonstandard_skip_compute;
     logic [PIPESMID:0] counter_ready_pipe;
 
     assign weight_handshake = weight_valid_i && weight_ready_o;
@@ -83,12 +76,10 @@ module logic_ctrl #(
 
     assign config_ready_o = (current_state == IDLE) && !debug_en_i;
     assign spin_ready_o = (current_state == IDLE) && !debug_en_i && (!config_valid_i);
-    assign nonstandard_skip_compute = (current_state == COMPUTE_NONSTANDARD) && max_flipped_count_zero_i;
-    assign weight_ready_o = ((current_state == COMPUTE_STANDARD) || (current_state == COMPUTE_NONSTANDARD))
-                         && (!counter_ready_i) && (!debug_en_i) && (!nonstandard_skip_compute);
-    assign energy_valid_comb = (((current_state == COMPUTE_STANDARD) || (current_state == COMPUTE_NONSTANDARD))
-                            && counter_ready_pipe[PIPESMID] && cmpt_done_i)
-                            || nonstandard_skip_compute;
+    assign weight_ready_o = (current_state == COMPUTE_STANDARD)
+                         && (!counter_ready_i) && (!debug_en_i);
+    assign energy_valid_comb = (current_state == COMPUTE_STANDARD)
+                            && counter_ready_pipe[PIPESMID] && cmpt_done_i;
 
     // Pipeline counter_ready_i signal
     assign counter_ready_pipe[0] = counter_ready_i;
@@ -111,10 +102,8 @@ module logic_ctrl #(
                 if (debug_en_i)
                     next_state = IDLE; // stay in IDLE in debug mode
                 else begin
-                    if ((standard_mode_i || first_operation_sampled_i) && spin_handshake)
+                    if (spin_handshake)
                         next_state = COMPUTE_STANDARD;
-                    else if (!standard_mode_i && !first_operation_sampled_i && max_flipped_count_valid)
-                        next_state = COMPUTE_NONSTANDARD;
                 end
             end
             COMPUTE_STANDARD: begin
@@ -125,16 +114,6 @@ module logic_ctrl #(
                         next_state = IDLE;
                     else
                         next_state = COMPUTE_STANDARD;
-                end
-            end
-            COMPUTE_NONSTANDARD: begin
-                if (debug_en_i)
-                    next_state = COMPUTE_NONSTANDARD; // stay in COMPUTE_NONSTANDARD in debug mode
-                else begin
-                    if (energy_handshake)
-                        next_state = IDLE;
-                    else
-                        next_state = COMPUTE_NONSTANDARD;
                 end
             end
             default: begin
